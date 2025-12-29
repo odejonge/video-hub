@@ -1,0 +1,117 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String?
+  avatar       String?
+  provider     String
+  providerId   String
+  credits      Int           @default(10)
+  collections  Collection[]
+  transactions Transaction[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([provider, providerId])
+}
+
+model Collection {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  isPublic    Boolean  @default(false)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clips       Clip[]
+  videos      Video[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Source video - uploaded once, can have multiple clips
+model Video {
+  id           String     @id @default(cuid())
+  title        String
+  videoUrl     String
+  thumbnailUrl String?
+  duration     Float?
+  bunnyVideoId String?
+  collectionId String
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  clips        Clip[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+// Clip - a segment of a video with start/end times
+model Clip {
+  id           String      @id @default(cuid())
+  title        String
+  startTime    Float       @default(0)
+  endTime      Float?
+  videoId      String?
+  video        Video?      @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  // Legacy fields for backwards compatibility
+  videoUrl     String?
+  thumbnailUrl String?
+  bunnyVideoId String?
+  collectionId String
+  collection   Collection  @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  danceMoveId  String?
+  danceMove    DanceMove?  @relation(fields: [danceMoveId], references: [id])
+  tags         ClipTag[]
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model DanceMove {
+  id         String   @id @default(cuid())
+  name       String   @unique
+  category   String
+  difficulty Int      @default(1)
+  clips      Clip[]
+  createdAt  DateTime @default(now())
+}
+
+model Tag {
+  id    String    @id @default(cuid())
+  name  String    @unique
+  clips ClipTag[]
+}
+
+model ClipTag {
+  clipId String
+  tagId  String
+  clip   Clip   @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([clipId, tagId])
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount      Int
+  type        String
+  description String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+}
+
+model CreditPackage {
+  id       String  @id @default(cuid())
+  name     String
+  credits  Int
+  priceEur Int
+  active   Boolean @default(true)
+}
+
