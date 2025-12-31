@@ -1,6 +1,5 @@
-version: '3.8'
-
 services:
+  # Database
   postgres:
     image: postgres:16-alpine
     container_name: videohub-db
@@ -8,11 +7,76 @@ services:
       POSTGRES_USER: videohub
       POSTGRES_PASSWORD: videohub
       POSTGRES_DB: videohub
-    ports:
-      - '5433:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - videohub
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U videohub" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: videohub-backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://videohub:videohub@postgres:5432/videohub
+      NODE_ENV: development
+      PORT: 3000
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      # Backend routes - accepts any host (ngrok, localhost, etc)
+      # Note: /auth/callback is frontend, so we exclude it
+      - traefik.http.routers.videohub-backend.rule=PathPrefix(`/api`) || PathPrefix(`/auth/google`) || PathPrefix(`/auth/facebook`) || PathPrefix(`/auth/me`) || PathPrefix(`/health`) || PathPrefix(`/webhooks`)
+      - traefik.http.routers.videohub-backend.entrypoints=web,websecure
+      - traefik.http.routers.videohub-backend.priority=100
+      - traefik.http.routers.videohub-backend.tls=true
+      - traefik.http.services.videohub-backend.loadbalancer.server.port=3000
+    networks:
+      - videohub
+      - traefik_network
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: videohub-frontend
+    environment:
+      VITE_API_URL: "" # Empty = same origin, uses relative paths
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+    labels:
+      - traefik.enable=true
+      # Frontend - accepts any host (catch-all, lower priority than backend)
+      - traefik.http.routers.videohub-frontend.rule=PathPrefix(`/`)
+      - traefik.http.routers.videohub-frontend.entrypoints=web,websecure
+      - traefik.http.routers.videohub-frontend.priority=1
+      - traefik.http.routers.videohub-frontend.tls=true
+      - traefik.http.services.videohub-frontend.loadbalancer.server.port=5173
+    networks:
+      - videohub
+      - traefik_network
 
 volumes:
   postgres_data:
 
+
+networks:
+  videohub:
+    driver: bridge
+  traefik_network:
+    external: true

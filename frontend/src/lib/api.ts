@@ -1,11 +1,10 @@
-// Use same hostname as frontend, but port 3000 for API
+// API URL: use VITE_API_URL if set, otherwise use relative paths (same origin)
 function getApiUrl() {
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL
   }
-  // In development, use same host as frontend but with API port
-  const host = window.location.hostname
-  return `http://${host}:3000`
+  // Empty string = relative URLs, works with reverse proxy
+  return ''
 }
 
 const API_URL = getApiUrl()
@@ -77,5 +76,3 @@ class ApiClient {
 }
 
 export const api = new ApiClient()
-
-

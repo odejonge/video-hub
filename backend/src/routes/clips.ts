@@ -133,6 +133,25 @@ router.post('/confirm-upload', auth, async (req: AuthRequest, res) => {
   res.status(201).json(clip)
 })
 
+// Get single clip
+router.get('/:id', auth, async (req: AuthRequest, res) => {
+  const clip = await prisma.clip.findFirst({
+    where: { id: req.params.id },
+    include: {
+      collection: true,
+      video: true,
+      danceMove: true,
+      tags: { include: { tag: true } },
+    },
+  })
+
+  if (!clip || clip.collection.userId !== req.user!.id) {
+    return res.status(404).json({ error: 'clip_not_found' })
+  }
+
+  res.json(clip)
+})
+
 // Update clip (timestamps, title, etc)
 router.patch('/:id', auth, async (req: AuthRequest, res) => {
   const { title, startTime, endTime, danceMoveId } = req.body

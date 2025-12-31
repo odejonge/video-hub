@@ -10,14 +10,6 @@ interface User {
   credits: number
 }
 
-function getApiUrl() {
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL
-  }
-  const host = window.location.hostname
-  return `http://${host}:3000`
-}
-
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const token = ref<string | null>(localStorage.getItem('token'))
@@ -51,11 +43,13 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function loginWithGoogle() {
-    window.location.href = `${getApiUrl()}/auth/google`
+    // Use relative URL - works with reverse proxy
+    window.location.href = '/auth/google'
   }
 
   function loginWithFacebook() {
-    window.location.href = `${getApiUrl()}/auth/facebook`
+    // Use relative URL - works with reverse proxy
+    window.location.href = '/auth/facebook'
   }
 
   return {
@@ -70,5 +64,3 @@ export const useAuthStore = defineStore('auth', () => {
     loginWithFacebook,
   }
 })
-
-

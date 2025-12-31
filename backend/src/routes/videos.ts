@@ -167,7 +167,7 @@ router.post('/confirm-upload', auth, async (req: AuthRequest, res) => {
 
 // Create a clip from a video
 router.post('/:videoId/clips', auth, async (req: AuthRequest, res) => {
-  const { title, startTime, endTime, danceMoveId, tags } = req.body
+  const { title, startTime, endTime, danceMoveId, tagNames } = req.body
 
   // Verify video ownership
   const video = await prisma.video.findFirst({
@@ -179,6 +179,22 @@ router.post('/:videoId/clips', auth, async (req: AuthRequest, res) => {
     return res.status(404).json({ error: 'video_not_found' })
   }
 
+  // Create or get tags (case-insensitive)
+  const tagConnections: { tagId: string }[] = []
+  if (tagNames?.length) {
+    for (const name of tagNames) {
+      const normalizedName = name.trim().toLowerCase()
+      if (!normalizedName) continue
+
+      const tag = await prisma.tag.upsert({
+        where: { name: normalizedName },
+        update: {},
+        create: { name: normalizedName },
+      })
+      tagConnections.push({ tagId: tag.id })
+    }
+  }
+
   const clip = await prisma.clip.create({
     data: {
       title,
@@ -187,10 +203,8 @@ router.post('/:videoId/clips', auth, async (req: AuthRequest, res) => {
       videoId: video.id,
       collectionId: video.collectionId,
       danceMoveId,
-      tags: tags?.length
-        ? {
-            create: tags.map((tagId: string) => ({ tagId })),
-          }
+      tags: tagConnections.length
+        ? { create: tagConnections }
         : undefined,
     },
     include: {

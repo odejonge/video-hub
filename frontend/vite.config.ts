@@ -12,7 +12,7 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    allowedHosts: ['.nip.io', '.sslip.io'], // Allow wildcard DNS services
+    allowedHosts: ['.nip.io', '.sslip.io', '.alles.onl', '.diejongen.nl', '.ngrok-free.app', '.localhost'], // Allow wildcard DNS services
   },
 })
 

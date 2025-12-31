@@ -20,6 +20,24 @@ const router = createRouter({
       component: () => import('@/pages/AuthFailedPage.vue'),
     },
     {
+      path: '/tags',
+      name: 'tags',
+      component: () => import('@/pages/TagsPage.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/tags/:tagName',
+      name: 'tag-clips',
+      component: () => import('@/pages/TagClipsPage.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/clips/:id',
+      name: 'clip-viewer',
+      component: () => import('@/pages/ClipViewerPage.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/dashboard',
       name: 'dashboard',
       component: () => import('@/pages/DashboardPage.vue'),

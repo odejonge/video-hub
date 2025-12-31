@@ -1,14 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/lib/api'
 import AppLayout from '@/components/AppLayout.vue'
-
-interface DanceMove {
-  id: string
-  name: string
-  category: string
-}
 
 interface Tag {
   tag: { id: string; name: string }
@@ -19,7 +13,6 @@ interface Clip {
   title: string
   startTime: number
   endTime: number | null
-  danceMove: DanceMove | null
   tags?: Tag[]
 }
 
@@ -37,7 +30,6 @@ const route = useRoute()
 const router = useRouter()
 
 const video = ref<Video | null>(null)
-const danceMoves = ref<DanceMove[]>([])
 const videoRef = ref<HTMLVideoElement | null>(null)
 
 // Player state
@@ -52,8 +44,22 @@ const isCreatingClip = ref(false)
 const newClipTitle = ref('')
 const newClipStart = ref<number | null>(null)
 const newClipEnd = ref<number | null>(null)
-const newClipDanceMoveId = ref<string | null>(null)
+const newClipTagInput = ref('')
+const newClipTags = ref<string[]>([])
 const isSaving = ref(false)
+
+// Tags autocomplete
+const allTags = ref<{ id: string; name: string }[]>([])
+const showTagDropdown = ref(false)
+const filteredTags = computed(() => {
+  const search = newClipTagInput.value.toLowerCase()
+  return allTags.value
+    .filter(t => 
+      t.name.includes(search) && 
+      !newClipTags.value.includes(t.name)
+    )
+    .slice(0, 10)
+})
 
 // Selected clip for preview
 const previewClip = ref<Clip | null>(null)
@@ -70,12 +76,21 @@ async function loadVideo() {
   }
 }
 
-async function loadDanceMoves() {
+async function loadAllTags() {
   try {
-    const res = await api.get<DanceMove[]>('/api/dance-moves')
-    danceMoves.value = res.data
+    const res = await api.get<{ id: string; name: string }[]>('/api/tags')
+    allTags.value = res.data
   } catch {}
 }
+
+function selectTagFromDropdown(tagName: string) {
+  if (!newClipTags.value.includes(tagName)) {
+    newClipTags.value = [...newClipTags.value, tagName]
+  }
+  newClipTagInput.value = ''
+  showTagDropdown.value = false
+}
+
 
 // Player controls
 function togglePlay() {
@@ -144,8 +159,22 @@ function startCreatingClip() {
   newClipTitle.value = ''
   newClipStart.value = null
   newClipEnd.value = null
-  newClipDanceMoveId.value = null
+  newClipTagInput.value = ''
+  newClipTags.value = []
   previewClip.value = null
+}
+
+function addTag() {
+  const tag = newClipTagInput.value.trim().toLowerCase()
+  if (tag && !newClipTags.value.includes(tag)) {
+    newClipTags.value = [...newClipTags.value, tag]
+  }
+  newClipTagInput.value = ''
+  showTagDropdown.value = false
+}
+
+function removeTag(tag: string) {
+  newClipTags.value = newClipTags.value.filter(t => t !== tag)
 }
 
 function cancelCreatingClip() {
@@ -170,7 +199,7 @@ async function saveClip() {
       title: newClipTitle.value,
       startTime: newClipStart.value,
       endTime: newClipEnd.value,
-      danceMoveId: newClipDanceMoveId.value,
+      tagNames: newClipTags.value,
     })
 
     video.value.clips.push(clip)
@@ -178,6 +207,7 @@ async function saveClip() {
     isCreatingClip.value = false
     previewClip.value = null
     activeTab.value = 'clips' // Switch to clips tab on mobile
+    loadAllTags() // Refresh tags list for new tags
   } catch (err) {
     console.error('Failed to save clip:', err)
   } finally {
@@ -235,7 +265,7 @@ function handleKeydown(e: KeyboardEvent) {
 
 onMounted(() => {
   loadVideo()
-  loadDanceMoves()
+  loadAllTags()
   document.addEventListener('keydown', handleKeydown)
 })
 
@@ -423,12 +453,66 @@ onUnmounted(() => {
                 </button>
               </div>
 
-              <select v-model="newClipDanceMoveId" class="input w-full">
-                <option :value="null">-- Geen dans move --</option>
-                <option v-for="move in danceMoves" :key="move.id" :value="move.id">
-                  {{ move.name }} ({{ move.category }})
-                </option>
-              </select>
+              <!-- Tags -->
+              <div class="space-y-2">
+                <label class="text-sm text-[var(--color-text-muted)]">Tags</label>
+                <div class="relative">
+                  <div class="flex gap-2">
+                    <input
+                      :value="newClipTagInput"
+                      @input="newClipTagInput = ($event.target as HTMLInputElement).value; showTagDropdown = true"
+                      @focus="showTagDropdown = true"
+                      @blur="setTimeout(() => showTagDropdown = false, 200)"
+                      type="text"
+                      placeholder="Zoek of maak tag..."
+                      class="input flex-1"
+                      @keyup.enter="addTag"
+                    />
+                    <button type="button" @click="addTag" class="btn btn-secondary px-3">+</button>
+                  </div>
+                  
+                  <!-- Tag dropdown -->
+                  <div 
+                    v-if="showTagDropdown && (filteredTags.length > 0 || newClipTagInput.trim())"
+                    class="absolute z-10 top-full left-0 right-12 mt-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-xl max-h-48 overflow-y-auto"
+                  >
+                    <!-- Existing tags -->
+                    <button
+                      v-for="tag in filteredTags"
+                      :key="tag.id"
+                      type="button"
+                      @mousedown.prevent="selectTagFromDropdown(tag.name)"
+                      class="w-full text-left px-3 py-2 hover:bg-[var(--color-bg-tertiary)] flex items-center gap-2"
+                    >
+                      <span class="text-brand-400">🏷️</span>
+                      {{ tag.name }}
+                    </button>
+                    
+                    <!-- Create new tag option -->
+                    <button
+                      v-if="newClipTagInput.trim() && !allTags.some(t => t.name === newClipTagInput.trim().toLowerCase())"
+                      type="button"
+                      @mousedown.prevent="addTag"
+                      class="w-full text-left px-3 py-2 hover:bg-[var(--color-bg-tertiary)] flex items-center gap-2 border-t border-[var(--color-border)]"
+                    >
+                      <span class="text-green-400">+</span>
+                      <span>Nieuwe tag: <strong>{{ newClipTagInput.trim().toLowerCase() }}</strong></span>
+                    </button>
+                  </div>
+                </div>
+                
+                <!-- Selected tags -->
+                <div v-if="newClipTags.length" class="flex flex-wrap gap-2">
+                  <span
+                    v-for="tag in newClipTags"
+                    :key="tag"
+                    class="inline-flex items-center gap-1 bg-brand-600/20 text-brand-400 px-2 py-1 rounded-full text-sm"
+                  >
+                    {{ tag }}
+                    <button type="button" @click="removeTag(tag)" class="hover:text-white">×</button>
+                  </span>
+                </div>
+              </div>
 
               <div class="flex gap-2 sm:gap-3">
                 <button @click="cancelCreatingClip" class="btn btn-secondary flex-1">
@@ -474,9 +558,13 @@ onUnmounted(() => {
                     <div class="text-sm text-[var(--color-text-muted)] font-mono">
                       {{ formatTimeShort(clip.startTime) }} → {{ clip.endTime ? formatTimeShort(clip.endTime) : 'eind' }}
                     </div>
-                    <div v-if="clip.danceMove" class="mt-1">
-                      <span class="text-xs bg-brand-600/20 text-brand-400 px-2 py-0.5 rounded">
-                        {{ clip.danceMove.name }}
+                    <div v-if="clip.tags?.length" class="flex flex-wrap gap-1 mt-1">
+                      <span
+                        v-for="ct in clip.tags"
+                        :key="ct.tag.id"
+                        class="text-xs bg-[var(--color-bg-tertiary)] px-2 py-0.5 rounded-full"
+                      >
+                        {{ ct.tag.name }}
                       </span>
                     </div>
                   </div>

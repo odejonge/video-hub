@@ -9,6 +9,7 @@ import collectionRoutes from './routes/collections.js'
 import creditRoutes from './routes/credits.js'
 import danceMoveRoutes from './routes/dance-moves.js'
 import videoRoutes from './routes/videos.js'
+import tagRoutes from './routes/tags.js'
 import webhookRoutes from './routes/webhooks.js'
 
 const app = express()
@@ -17,15 +18,39 @@ const PORT = process.env.PORT || 3000
 // Webhooks need raw body
 app.use('/webhooks', express.raw({ type: 'application/json' }), webhookRoutes)
 
-// Middleware
+// CORS - allow same origin (reverse proxy) and configured frontend
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'http://localhost',
+  'http://localhost:5173',
+  'http://localhost:3000',
+].filter(Boolean) as string[]
+
 app.use(cors({ 
-  origin: [
-    process.env.FRONTEND_URL!,
-    'http://192.168.1.172:5173', // Local network access
-    /^http:\/\/192\.168\.\d+\.\d+:\d+$/, // Any local IP
-  ], 
+  origin: (origin, callback) => {
+    // Allow requests with no origin (same origin, mobile apps, etc)
+    if (!origin) return callback(null, true)
+    
+    // Allow configured origins
+    if (allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+      return callback(null, true)
+    }
+    
+    // Allow ngrok URLs
+    if (origin.includes('ngrok')) {
+      return callback(null, true)
+    }
+    
+    // Allow any localhost
+    if (origin.includes('localhost')) {
+      return callback(null, true)
+    }
+    
+    callback(null, false)
+  },
   credentials: true 
 }))
+
 app.use(express.json())
 app.use(passport.initialize())
 
@@ -39,6 +64,7 @@ app.use('/api/collections', collectionRoutes)
 app.use('/api/credits', creditRoutes)
 app.use('/api/dance-moves', danceMoveRoutes)
 app.use('/api/videos', videoRoutes)
+app.use('/api/tags', tagRoutes)
 
 // Health check
 app.get('/health', (req, res) => {
@@ -47,6 +73,6 @@ app.get('/health', (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`)
-  console.log(`🌐 Network: http://192.168.1.172:${PORT}`)
+  console.log(`📍 Frontend URL: ${process.env.FRONTEND_URL || 'not set'}`)
+  console.log(`📍 Backend URL: ${process.env.BACKEND_URL || 'not set'}`)
 })
-

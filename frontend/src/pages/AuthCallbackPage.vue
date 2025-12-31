@@ -13,7 +13,7 @@ onMounted(async () => {
   if (token) {
     auth.setToken(token)
     await auth.fetchUser()
-    router.push('/dashboard')
+    router.push('/tags')
   } else {
     router.push('/auth/failed')
   }
