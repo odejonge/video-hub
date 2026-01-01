@@ -62,9 +62,9 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
-      path: '/credits/success',
-      name: 'credits-success',
-      component: () => import('@/pages/CreditsSuccessPage.vue'),
+      path: '/credits/result',
+      name: 'credits-result',
+      component: () => import('@/pages/CreditsResultPage.vue'),
       meta: { requiresAuth: true },
     },
   ],

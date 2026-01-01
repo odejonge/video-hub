@@ -64,7 +64,7 @@ router.post('/purchase', auth, async (req: AuthRequest, res) => {
         value: (pkg.priceEur / 100).toFixed(2),
       },
       description: `${pkg.credits} credits - DanceClips`,
-      redirectUrl: `${redirectBase}/credits/success`,
+      redirectUrl: `${redirectBase}/credits/result`,
       webhookUrl: `${webhookBase}/webhooks/mollie`,
       metadata: {
         userId: req.user!.id,
@@ -73,10 +73,70 @@ router.post('/purchase', auth, async (req: AuthRequest, res) => {
       },
     })
 
-    res.json({ checkoutUrl: payment.getCheckoutUrl() })
+    // Return payment ID so frontend can store it
+    res.json({ 
+      checkoutUrl: payment.getCheckoutUrl(),
+      paymentId: payment.id,
+    })
   } catch (err: any) {
     console.error('Mollie purchase error:', err.message)
     res.status(500).json({ error: 'payment_failed', message: err.message })
+  }
+})
+
+// Check payment status (also acts as fallback if webhook was missed)
+router.get('/payment/:id', auth, async (req: AuthRequest, res) => {
+  try {
+    console.log('Checking payment status for:', req.params.id)
+    const payment = await getMollie().payments.get(req.params.id)
+    console.log('Payment status result:', payment.status)
+    
+    // Verify this payment belongs to the current user
+    const metadata = payment.metadata as { userId: string; packageId: string; credits: number }
+    if (metadata.userId !== req.user!.id) {
+      console.log('Payment user mismatch:', metadata.userId, '!=', req.user!.id)
+      return res.status(403).json({ error: 'forbidden' })
+    }
+    
+    // Fallback: if paid but not yet processed, add credits now
+    if (payment.status === 'paid') {
+      const existing = await prisma.transaction.findFirst({
+        where: {
+          metadata: {
+            path: ['mollieId'],
+            equals: payment.id,
+          },
+        },
+      })
+      
+      if (!existing) {
+        console.log('Fallback: processing missed payment, adding credits:', metadata.credits)
+        await prisma.$transaction([
+          prisma.user.update({
+            where: { id: metadata.userId },
+            data: { credits: { increment: metadata.credits } },
+          }),
+          prisma.transaction.create({
+            data: {
+              userId: metadata.userId,
+              amount: metadata.credits,
+              type: 'purchase',
+              description: `Aankoop ${metadata.credits} credits`,
+              metadata: { mollieId: payment.id, packageId: metadata.packageId },
+            },
+          }),
+        ])
+      }
+    }
+    
+    res.json({
+      status: payment.status,
+      amount: payment.amount,
+      description: payment.description,
+    })
+  } catch (err: any) {
+    console.error('Payment check error:', err.message)
+    res.status(500).json({ error: 'payment_check_failed', message: err.message })
   }
 })
 

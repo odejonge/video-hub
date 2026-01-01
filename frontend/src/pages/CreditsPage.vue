@@ -36,10 +36,12 @@ async function loadData() {
 async function purchasePackage(pkg: CreditPackage) {
   purchasing.value = pkg.id
   try {
-    const res = await api.post<{ checkoutUrl: string }>('/api/credits/purchase', {
+    const res = await api.post<{ checkoutUrl: string; paymentId: string }>('/api/credits/purchase', {
       packageId: pkg.id,
-      returnOrigin: window.location.origin, // Redirect back to same origin
+      returnOrigin: window.location.origin,
     })
+    // Store payment ID for result page
+    localStorage.setItem('pendingPaymentId', res.data.paymentId)
     window.location.href = res.data.checkoutUrl
   } catch {
     purchasing.value = null

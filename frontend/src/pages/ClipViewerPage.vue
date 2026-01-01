@@ -31,6 +31,8 @@ const duration = ref(0)
 const playbackRate = ref(1)
 const controlsVisible = ref(true)
 const isPortrait = ref(false)
+const isFullscreen = ref(false)
+const isIOSMobile = ref(false)
 
 let hideControlsTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -101,7 +103,17 @@ function togglePlay() {
     videoRef.value.play()
   }
   playing.value = !playing.value
-  resetHideControlsTimer()
+}
+
+// Toggle controls visibility on tap
+function toggleControls() {
+  controlsVisible.value = !controlsVisible.value
+  
+  if (controlsVisible.value && playing.value) {
+    resetHideControlsTimer()
+  } else if (hideControlsTimeout) {
+    clearTimeout(hideControlsTimeout)
+  }
 }
 
 const isScrubbing = ref(false)
@@ -186,21 +198,56 @@ function setPlaybackRate(rate: number) {
   resetHideControlsTimer()
 }
 
-function showControls() {
-  controlsVisible.value = true
-  resetHideControlsTimer()
-}
-
 function resetHideControlsTimer() {
   if (hideControlsTimeout) {
     clearTimeout(hideControlsTimeout)
   }
   
-  if (playing.value) {
+  if (playing.value && controlsVisible.value) {
     hideControlsTimeout = setTimeout(() => {
       controlsVisible.value = false
-    }, 3000)
+    }, 1500)
   }
+}
+
+function canUseFullscreenAPI() {
+  return !!(document.fullscreenEnabled || (document as any).webkitFullscreenEnabled)
+}
+
+function toggleFullscreen() {
+  const container = containerRef.value
+  if (!container) return
+  
+  // Check if Fullscreen API is available
+  if (!canUseFullscreenAPI()) {
+    // iOS Safari: Fullscreen API not available
+    // Page is already visually fullscreen with fixed positioning
+    // Just toggle the icon state for visual feedback (no actual effect)
+    isFullscreen.value = !isFullscreen.value
+    return
+  }
+  
+  // Standard Fullscreen API (works on Android and Desktop)
+  const isCurrentlyFullscreen = !!(document.fullscreenElement || (document as any).webkitFullscreenElement)
+  
+  if (!isCurrentlyFullscreen) {
+    if (container.requestFullscreen) {
+      container.requestFullscreen().catch(err => console.error('Fullscreen failed:', err))
+    } else if ((container as any).webkitRequestFullscreen) {
+      (container as any).webkitRequestFullscreen()
+    }
+  } else {
+    if (document.exitFullscreen) {
+      document.exitFullscreen()
+    } else if ((document as any).webkitExitFullscreen) {
+      (document as any).webkitExitFullscreen()
+    }
+  }
+  // State is updated by onFullscreenChange event listener
+}
+
+function onFullscreenChange() {
+  isFullscreen.value = !!(document.fullscreenElement || (document as any).webkitFullscreenElement)
 }
 
 function goBack() {
@@ -215,19 +262,27 @@ function handleKeydown(e: KeyboardEvent) {
     case 'k':
       e.preventDefault()
       togglePlay()
+      controlsVisible.value = true
+      resetHideControlsTimer()
       break
     case 'ArrowLeft':
       e.preventDefault()
       videoRef.value.currentTime = Math.max(clip.value.startTime, currentTime.value - 5)
-      showControls()
+      controlsVisible.value = true
+      resetHideControlsTimer()
       break
     case 'ArrowRight':
       e.preventDefault()
       videoRef.value.currentTime = Math.min(clip.value.endTime, currentTime.value + 5)
-      showControls()
+      controlsVisible.value = true
+      resetHideControlsTimer()
+      break
+    case 'f':
+      e.preventDefault()
+      toggleFullscreen()
       break
     case 'Escape':
-      goBack()
+      if (!isFullscreen.value) goBack()
       break
   }
 }
@@ -236,7 +291,6 @@ watch(playing, (isPlaying) => {
   if (isPlaying) {
     resetHideControlsTimer()
   } else {
-    controlsVisible.value = true
     if (hideControlsTimeout) {
       clearTimeout(hideControlsTimeout)
     }
@@ -246,10 +300,20 @@ watch(playing, (isPlaying) => {
 onMounted(() => {
   loadClip()
   window.addEventListener('keydown', handleKeydown)
+  document.addEventListener('fullscreenchange', onFullscreenChange)
+  document.addEventListener('webkitfullscreenchange', onFullscreenChange)
+  
+  // Detect iOS mobile (iPhone/iPad touch device)
+  const ua = navigator.userAgent
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  const isMobile = /Mobi|Android/i.test(ua) || navigator.maxTouchPoints > 1
+  isIOSMobile.value = isIOS && isMobile
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
+  document.removeEventListener('fullscreenchange', onFullscreenChange)
+  document.removeEventListener('webkitfullscreenchange', onFullscreenChange)
   document.removeEventListener('mousemove', handleGlobalMouseMove)
   document.removeEventListener('mouseup', handleGlobalMouseUp)
   if (hideControlsTimeout) {
@@ -262,9 +326,6 @@ onUnmounted(() => {
   <div 
     ref="containerRef"
     class="fixed inset-0 bg-black flex items-center justify-center"
-    @click="showControls"
-    @touchstart="showControls"
-    @mousemove="showControls"
   >
     <!-- Loading -->
     <div v-if="loading" class="text-white">
@@ -278,18 +339,26 @@ onUnmounted(() => {
       :src="clip.video.videoUrl"
       @loadedmetadata="onVideoLoaded"
       @timeupdate="onTimeUpdate"
-      @click.stop="togglePlay"
       class="max-h-full max-w-full"
       :class="isPortrait ? 'h-full w-auto' : 'w-full h-auto'"
       playsinline
       preload="auto"
     />
 
+    <!-- Tap overlay for toggling controls - covers entire screen except header/footer when visible -->
+    <div 
+      v-if="clip"
+      class="absolute inset-0 z-10"
+      :class="controlsVisible ? 'top-16 bottom-24' : 'top-0 bottom-0'"
+      @click.stop="toggleControls"
+      @touchend.stop.prevent="toggleControls"
+    />
+
     <!-- Controls overlay -->
     <transition name="fade">
       <div 
         v-if="clip && controlsVisible"
-        class="absolute inset-0 pointer-events-none"
+        class="absolute inset-0 pointer-events-none z-20"
       >
         <!-- Top bar -->
         <div class="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent pointer-events-auto">
@@ -311,24 +380,9 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Center play button -->
-        <button 
-          @click.stop="togglePlay"
-          class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-auto"
-        >
-          <div class="w-20 h-20 rounded-full bg-white/20 backdrop-blur flex items-center justify-center">
-            <svg v-if="!playing" class="w-10 h-10 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M8 5v14l11-7z"/>
-            </svg>
-            <svg v-else class="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-            </svg>
-          </div>
-        </button>
-
         <!-- Bottom bar -->
         <div class="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent pointer-events-auto">
-          <!-- Progress bar - larger touch area -->
+          <!-- Progress bar -->
           <div 
             ref="progressBarRef"
             @mousedown.stop="startScrub"
@@ -342,7 +396,6 @@ onUnmounted(() => {
                 class="h-full bg-brand-500 rounded-full"
                 :style="{ width: `${progress}%` }"
               />
-              <!-- Scrub handle -->
               <div 
                 class="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg transition-transform"
                 :class="isScrubbing ? 'scale-125' : ''"
@@ -351,22 +404,48 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="flex items-center justify-between text-white">
-            <!-- Time -->
-            <div class="text-sm">
-              {{ formatTime(clipCurrentTime) }} / {{ formatTime(clipDuration) }}
+          <!-- Controls row -->
+          <div class="flex items-center justify-between text-white mt-3">
+            <!-- Left: Play/Pause + Time -->
+            <div class="flex items-center gap-3">
+              <button @click.stop="togglePlay" class="p-1">
+                <svg v-if="!playing" class="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+                <svg v-else class="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                </svg>
+              </button>
+              <div class="text-sm">
+                {{ formatTime(clipCurrentTime) }} / {{ formatTime(clipDuration) }}
+              </div>
             </div>
 
-            <!-- Playback speed -->
+            <!-- Right: Speed + Fullscreen -->
             <div class="flex items-center gap-2">
-              <button 
-                v-for="rate in [0.25, 0.5, 1, 1.5, 2]"
-                :key="rate"
-                @click.stop="setPlaybackRate(rate)"
-                class="px-2 py-1 rounded text-sm transition-colors"
-                :class="playbackRate === rate ? 'bg-brand-500' : 'bg-white/20 hover:bg-white/30'"
-              >
-                {{ rate }}x
+              <!-- Playback speed -->
+              <div class="flex items-center gap-1">
+                <button 
+                  v-for="rate in [0.25, 0.5, 1, 1.5, 2]"
+                  :key="rate"
+                  @click.stop="setPlaybackRate(rate)"
+                  class="px-2 py-1 rounded text-xs transition-colors"
+                  :class="playbackRate === rate ? 'bg-brand-500' : 'bg-white/20 hover:bg-white/30'"
+                >
+                  {{ rate }}x
+                </button>
+              </div>
+              
+              <!-- Fullscreen - hide on iOS mobile where it doesn't work -->
+              <button v-if="!isIOSMobile" @click.stop="toggleFullscreen" class="p-2 ml-2">
+                <!-- Expand icon (enter fullscreen) - arrows pointing outward -->
+                <svg v-if="!isFullscreen" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
+                </svg>
+                <!-- Shrink icon (exit fullscreen) - corners pointing inward -->
+                <svg v-else class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 4v4H4m16 0h-4V4M8 20v-4H4m16 0h-4v4"/>
+                </svg>
               </button>
             </div>
           </div>
@@ -379,7 +458,7 @@ onUnmounted(() => {
 <style scoped>
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.3s ease;
+  transition: opacity 0.25s ease;
 }
 
 .fade-enter-from,
@@ -387,4 +466,3 @@ onUnmounted(() => {
   opacity: 0;
 }
 </style>
-
