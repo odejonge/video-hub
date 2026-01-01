@@ -70,16 +70,23 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const auth = useAuthStore()
 
-  if (to.meta.requiresAuth && !auth.isLoggedIn) {
-    next({ name: 'home' })
-  } else {
-    next()
+  if (to.meta.requiresAuth) {
+    // If we have a token but no user yet, try to fetch user first
+    if (auth.token && !auth.user) {
+      await auth.fetchUser()
+    }
+
+    // Now check if logged in
+    if (!auth.isLoggedIn) {
+      next({ name: 'home' })
+      return
+    }
   }
+
+  next()
 })
 
 export default router
-
-

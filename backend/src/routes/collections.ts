@@ -9,7 +9,7 @@ router.get('/', auth, async (req: AuthRequest, res) => {
   const collections = await prisma.collection.findMany({
     where: { userId: req.user!.id },
     include: {
-      _count: { select: { clips: true } },
+      _count: { select: { clips: true, videos: true } },
     },
     orderBy: { createdAt: 'desc' },
   })

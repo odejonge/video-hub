@@ -44,7 +44,7 @@ router.get('/balance', auth, async (req: AuthRequest, res) => {
 // Purchase credits
 router.post('/purchase', auth, async (req: AuthRequest, res) => {
   try {
-    const { packageId } = req.body
+    const { packageId, returnOrigin } = req.body
 
     const pkg = await prisma.creditPackage.findUnique({
       where: { id: packageId, active: true },
@@ -54,14 +54,18 @@ router.post('/purchase', auth, async (req: AuthRequest, res) => {
       return res.status(404).json({ error: 'package_not_found' })
     }
 
+    // Use the origin the user came from, or fallback to FRONTEND_URL
+    const redirectBase = returnOrigin || process.env.FRONTEND_URL
+    const webhookBase = process.env.BACKEND_URL
+
     const payment = await getMollie().payments.create({
       amount: {
         currency: 'EUR',
         value: (pkg.priceEur / 100).toFixed(2),
       },
       description: `${pkg.credits} credits - DanceClips`,
-      redirectUrl: `${process.env.FRONTEND_URL}/credits/success`,
-      webhookUrl: `${process.env.BACKEND_URL}/webhooks/mollie`,
+      redirectUrl: `${redirectBase}/credits/success`,
+      webhookUrl: `${webhookBase}/webhooks/mollie`,
       metadata: {
         userId: req.user!.id,
         packageId: pkg.id,

@@ -29,7 +29,8 @@ class ApiClient {
     })
 
     if (!res.ok) {
-      throw new Error(await res.text())
+      const text = await res.text()
+      throw new Error(`${res.status}: ${text}`)
     }
 
     return { data: await res.json() }

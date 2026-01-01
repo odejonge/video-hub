@@ -9,7 +9,7 @@ interface Collection {
   name: string
   description: string | null
   isPublic: boolean
-  _count: { clips: number }
+  _count: { clips: number; videos: number }
 }
 
 const auth = useAuthStore()
@@ -74,9 +74,10 @@ onMounted(loadCollections)
                 {{ collection.description }}
               </p>
             </div>
-            <span class="text-sm text-[var(--color-text-muted)] bg-white/5 px-2 py-1 rounded">
-              {{ collection._count.clips }} clips
-            </span>
+            <div class="text-sm text-[var(--color-text-muted)] text-right space-y-1">
+              <div class="bg-white/5 px-2 py-1 rounded">{{ collection._count.videos }} video's</div>
+              <div class="bg-white/5 px-2 py-1 rounded">{{ collection._count.clips }} clips</div>
+            </div>
           </div>
         </RouterLink>
       </div>

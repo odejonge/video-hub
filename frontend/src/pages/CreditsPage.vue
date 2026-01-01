@@ -38,6 +38,7 @@ async function purchasePackage(pkg: CreditPackage) {
   try {
     const res = await api.post<{ checkoutUrl: string }>('/api/credits/purchase', {
       packageId: pkg.id,
+      returnOrigin: window.location.origin, // Redirect back to same origin
     })
     window.location.href = res.data.checkoutUrl
   } catch {

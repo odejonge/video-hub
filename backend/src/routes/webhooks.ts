@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import express from 'express'
 import { createMollieClient } from '@mollie/api-client'
 import { prisma } from '../config/db.js'
 
@@ -11,17 +12,22 @@ function getMollie() {
   return createMollieClient({ apiKey: process.env.MOLLIE_API_KEY })
 }
 
-// Mollie webhook
-router.post('/mollie', async (req, res) => {
+// Mollie webhook - uses urlencoded body
+router.post('/mollie', express.urlencoded({ extended: false }), async (req, res) => {
   try {
-    const body = JSON.parse(req.body.toString())
-    const paymentId = body.id
-
+    console.log('Mollie webhook received:', req.body)
+    
+    // Mollie sends payment ID in body as 'id'
+    const paymentId = req.body.id
+    
     if (!paymentId) {
+      console.log('No payment ID in webhook')
       return res.status(400).send()
     }
 
+    console.log('Fetching payment:', paymentId)
     const payment = await getMollie().payments.get(paymentId)
+    console.log('Payment status:', payment.status)
 
     if (payment.status === 'paid') {
       const metadata = payment.metadata as {
@@ -29,6 +35,8 @@ router.post('/mollie', async (req, res) => {
         packageId: string
         credits: number
       }
+
+      console.log('Payment metadata:', metadata)
 
       // Check if already processed
       const existing = await prisma.transaction.findFirst({
@@ -41,6 +49,7 @@ router.post('/mollie', async (req, res) => {
       })
 
       if (!existing) {
+        console.log('Processing payment, adding credits:', metadata.credits)
         await prisma.$transaction([
           prisma.user.update({
             where: { id: metadata.userId },
@@ -56,6 +65,9 @@ router.post('/mollie', async (req, res) => {
             },
           }),
         ])
+        console.log('Credits added successfully!')
+      } else {
+        console.log('Payment already processed')
       }
     }
 
@@ -67,4 +79,3 @@ router.post('/mollie', async (req, res) => {
 })
 
 export default router
-

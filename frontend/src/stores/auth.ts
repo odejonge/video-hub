@@ -22,10 +22,20 @@ export const useAuthStore = defineStore('auth', () => {
 
     try {
       loading.value = true
-      const res = await api.get('/auth/me')
+      const res = await api.get<User>('/auth/me')
       user.value = res.data
-    } catch {
-      logout()
+    } catch (error: unknown) {
+      // Only logout on auth errors (401, 403)
+      if (error instanceof Error) {
+        const msg = error.message.toLowerCase()
+        if (msg.includes('401') || msg.includes('unauthorized') || msg.includes('403') || msg.includes('forbidden')) {
+          console.log('Auth error, logging out:', error.message)
+          logout()
+        } else {
+          // Network error etc - don't logout, keep token
+          console.log('Non-auth error fetching user:', error.message)
+        }
+      }
     } finally {
       loading.value = false
     }
