@@ -38,6 +38,7 @@ const controlsVisible = ref(true)
 const isPortrait = ref(false)
 const isFullscreen = ref(false)
 const isIOSMobile = ref(false)
+const isMuted = ref(true) // Start muted for autoplay
 
 // Copy/Share modal state
 const showCopyModal = ref(false)
@@ -98,10 +99,18 @@ async function loadCollections() {
 
 function onVideoLoaded() {
   if (!videoRef.value || !clip.value) return
+  
   const video = videoRef.value
   isPortrait.value = video.videoHeight > video.videoWidth
   video.currentTime = clip.value.startTime
   duration.value = video.duration
+  
+  // Auto-play the clip (muted)
+  video.play()
+    .then(() => {
+      playing.value = true
+    })
+    .catch(() => {})
 }
 
 function onTimeUpdate() {
@@ -120,6 +129,12 @@ function togglePlay() {
     videoRef.value.play()
   }
   playing.value = !playing.value
+}
+
+function toggleMute() {
+  if (!videoRef.value) return
+  isMuted.value = !isMuted.value
+  videoRef.value.muted = isMuted.value
 }
 
 function toggleControls() {
@@ -396,6 +411,8 @@ onUnmounted(() => {
       class="max-h-full max-w-full"
       :class="isPortrait ? 'h-full w-auto' : 'w-full h-auto'"
       playsinline
+      :muted="isMuted"
+      autoplay
       preload="auto"
     />
 
@@ -486,7 +503,11 @@ onUnmounted(() => {
                 </button>
               </div>
               
-              <button v-if="!isIOSMobile" @click.stop="toggleFullscreen" class="p-2 ml-2">
+              <button @click.stop="toggleMute" class="p-2 ml-2">
+                <Icon :name="isMuted ? 'volume-off' : 'volume-on'" :size="24" />
+              </button>
+              
+              <button v-if="!isIOSMobile" @click.stop="toggleFullscreen" class="p-2">
                 <Icon :name="isFullscreen ? 'shrink' : 'expand'" :size="24" />
               </button>
             </div>

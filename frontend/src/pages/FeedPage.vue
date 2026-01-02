@@ -30,6 +30,7 @@ const videoRefs = ref<(HTMLVideoElement | null)[]>([])
 const isBuffering = ref<Record<number, boolean>>({})
 const videoReady = ref<Record<number, boolean>>({})
 const isActuallyPlaying = ref<Record<number, boolean>>({})
+const isMuted = ref(true) // Start muted for autoplay
 
 // Touch/swipe state
 const touchStartY = ref(0)
@@ -45,24 +46,18 @@ const currentClip = computed(() => clips.value[currentIndex.value])
 const isCurrentBuffering = computed(() => isBuffering.value[currentIndex.value] ?? false)
 
 async function loadClips() {
-  console.log('[Feed] loadClips() called')
   loading.value = true
   try {
     const { data } = await api.get<Clip[]>('/api/clips')
-    console.log('[Feed] Loaded', data.length, 'clips')
-    // Shuffle clips randomly
     clips.value = shuffleArray(data)
   } catch (e) {
-    console.error('[Feed] Failed to load clips:', e)
+    console.error('Failed to load clips:', e)
   } finally {
     loading.value = false
-    console.log('[Feed] loading set to false, clips.length =', clips.value.length)
     
     // Auto-play first clip after loading
     if (clips.value.length > 0) {
-      console.log('[Feed] Scheduling playCurrentClip() via nextTick')
       nextTick(() => {
-        console.log('[Feed] nextTick fired, calling playCurrentClip()')
         playCurrentClip()
       })
     }
@@ -97,7 +92,6 @@ function goToClip(index: number) {
 
 async function playCurrentClip() {
   const index = currentIndex.value
-  console.log('[Feed] playCurrentClip() called, index =', index)
   
   // Pause all other videos
   videoRefs.value.forEach((video, i) => {
@@ -110,11 +104,7 @@ async function playCurrentClip() {
   const currentVideo = videoRefs.value[index]
   const clip = clips.value[index]
   
-  console.log('[Feed] currentVideo =', currentVideo ? 'exists' : 'null')
-  console.log('[Feed] clip =', clip ? clip.title : 'null')
-  
   if (!currentVideo || !clip) {
-    console.log('[Feed] Video element not ready, retrying in 100ms')
     // Video element not ready yet, retry after a short delay
     setTimeout(() => {
       if (currentIndex.value === index) {
@@ -124,10 +114,6 @@ async function playCurrentClip() {
     return
   }
   
-  console.log('[Feed] Video readyState =', currentVideo.readyState)
-  console.log('[Feed] Video paused =', currentVideo.paused)
-  console.log('[Feed] Setting currentTime to', clip.startTime)
-  
   // Show buffering indicator
   isBuffering.value[index] = true
   isActuallyPlaying.value[index] = false
@@ -136,23 +122,14 @@ async function playCurrentClip() {
   currentVideo.currentTime = clip.startTime
   
   // Immediately try to play - the 'playing' event will clear buffering
-  console.log('[Feed] Calling video.play()')
-  currentVideo.play()
-    .then(() => {
-      console.log('[Feed] play() promise resolved successfully')
-    })
-    .catch((e) => {
-      console.log('[Feed] play() failed:', e.name, e.message)
-      // Retry play after a short delay
-      setTimeout(() => {
-        if (currentIndex.value === index && currentVideo.paused) {
-          console.log('[Feed] Retrying play()')
-          currentVideo.play().catch((e2) => {
-            console.log('[Feed] Retry play() also failed:', e2.name, e2.message)
-          })
-        }
-      }, 500)
-    })
+  currentVideo.play().catch(() => {
+    // Retry play after a short delay
+    setTimeout(() => {
+      if (currentIndex.value === index && currentVideo.paused) {
+        currentVideo.play().catch(() => {})
+      }
+    }, 500)
+  })
   
   resetHideControlsTimer()
 }
@@ -167,43 +144,32 @@ function onTimeUpdate(video: HTMLVideoElement, clip: Clip, index: number) {
 }
 
 function onVideoWaiting(index: number) {
-  console.log('[Feed] onVideoWaiting, index =', index)
   if (index === currentIndex.value) {
     isBuffering.value[index] = true
   }
 }
 
 function onVideoPlaying(index: number) {
-  console.log('[Feed] onVideoPlaying, index =', index, '- VIDEO IS NOW PLAYING!')
-  // Only clear buffering when video is actually playing
   isBuffering.value[index] = false
   isActuallyPlaying.value[index] = true
 }
 
 function onVideoCanPlay(index: number) {
-  console.log('[Feed] onVideoCanPlay, index =', index)
-  // If this is the current clip and it's paused, try to play it
   const video = videoRefs.value[index]
   if (index === currentIndex.value && video && video.paused) {
-    console.log('[Feed] Video is paused at canplay, trying to play')
-    video.play().catch((e) => {
-      console.log('[Feed] play() in canplay failed:', e.name, e.message)
-    })
+    video.play().catch(() => {})
   }
 }
 
 function onVideoLoadedMetadata(index: number) {
-  console.log('[Feed] onVideoLoadedMetadata, index =', index)
   videoReady.value[index] = true
 }
 
 function onVideoPause(index: number) {
-  console.log('[Feed] onVideoPause, index =', index)
   isActuallyPlaying.value[index] = false
 }
 
 function onVideoStalled(index: number) {
-  console.log('[Feed] onVideoStalled, index =', index)
   if (index === currentIndex.value) {
     isBuffering.value[index] = true
   }
@@ -286,6 +252,16 @@ function togglePlayPause() {
     showControls.value = true
     if (hideControlsTimeout) clearTimeout(hideControlsTimeout)
   }
+}
+
+function toggleMute() {
+  isMuted.value = !isMuted.value
+  // Update all video elements
+  videoRefs.value.forEach((video) => {
+    if (video) {
+      video.muted = isMuted.value
+    }
+  })
 }
 
 function toggleControls() {
@@ -374,7 +350,7 @@ onUnmounted(() => {
           :src="clip.video.videoUrl"
           class="max-h-full max-w-full object-contain"
           playsinline
-          muted
+          :muted="isMuted"
           autoplay
           preload="auto"
           @timeupdate="onTimeUpdate($event.target as HTMLVideoElement, clip, index)"
@@ -424,16 +400,14 @@ onUnmounted(() => {
             </div>
 
             <!-- Center play button (only show when paused and not buffering) -->
-            <div 
-              class="absolute inset-0 flex items-center justify-center pointer-events-auto"
-              @click.stop="togglePlayPause"
-            >
-              <div 
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <button 
                 v-if="videoRefs[index]?.paused && !isBuffering[index]"
-                class="w-20 h-20 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center"
+                class="w-20 h-20 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center pointer-events-auto"
+                @click.stop="togglePlayPause"
               >
                 <Icon name="play" :size="40" />
-              </div>
+              </button>
             </div>
 
             <!-- Bottom info -->
@@ -454,6 +428,12 @@ onUnmounted(() => {
 
               <!-- Action buttons -->
               <div class="absolute right-4 bottom-20 flex flex-col gap-4 items-center">
+                <button 
+                  @click.stop="toggleMute"
+                  class="w-12 h-12 rounded-full bg-white/10 backdrop-blur flex items-center justify-center hover:bg-white/20 transition-colors"
+                >
+                  <Icon :name="isMuted ? 'volume-off' : 'volume-on'" :size="24" />
+                </button>
                 <button 
                   @click.stop="goToClipDetail(clip)"
                   class="w-12 h-12 rounded-full bg-white/10 backdrop-blur flex items-center justify-center hover:bg-white/20 transition-colors"
