@@ -16,6 +16,8 @@ model User {
   providerId   String
   credits      Int           @default(10)
   collections  Collection[]
+  ownedVideos  Video[]       @relation("VideoOwner")
+  videoAccess  VideoAccess[]
   transactions Transaction[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -31,60 +33,62 @@ model Collection {
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   clips       Clip[]
-  videos      Video[]
+  tags        Tag[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
 
-// Source video - uploaded once, can have multiple clips
+// Source video - owned by user, can be shared with other users
 model Video {
-  id           String     @id @default(cuid())
+  id           String        @id @default(cuid())
   title        String
   videoUrl     String
   thumbnailUrl String?
   duration     Float?
   bunnyVideoId String?
-  collectionId String
-  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  ownerId      String
+  owner        User          @relation("VideoOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  sharedWith   VideoAccess[]
   clips        Clip[]
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+// Many-to-many: Video shared with Users
+model VideoAccess {
+  videoId   String
+  userId    String
+  video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([videoId, userId])
 }
 
 // Clip - a segment of a video with start/end times
 model Clip {
-  id           String      @id @default(cuid())
+  id           String    @id @default(cuid())
   title        String
-  startTime    Float       @default(0)
+  startTime    Float     @default(0)
   endTime      Float?
-  videoId      String?
-  video        Video?      @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  // Legacy fields for backwards compatibility
-  videoUrl     String?
-  thumbnailUrl String?
-  bunnyVideoId String?
+  videoId      String
+  video        Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
   collectionId String
-  collection   Collection  @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-  danceMoveId  String?
-  danceMove    DanceMove?  @relation(fields: [danceMoveId], references: [id])
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
   tags         ClipTag[]
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }
 
-model DanceMove {
-  id         String   @id @default(cuid())
-  name       String   @unique
-  category   String
-  difficulty Int      @default(1)
-  clips      Clip[]
-  createdAt  DateTime @default(now())
-}
-
+// Tag - belongs to a collection, unique name within collection
 model Tag {
-  id    String    @id @default(cuid())
-  name  String    @unique
-  clips ClipTag[]
+  id           String     @id @default(cuid())
+  name         String
+  collectionId String
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  clips        ClipTag[]
+
+  @@unique([collectionId, name])
 }
 
 model ClipTag {
@@ -94,6 +98,23 @@ model ClipTag {
   tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([clipId, tagId])
+}
+
+// Template - predefined tag sets for different disciplines
+model Template {
+  id          String        @id @default(cuid())
+  name        String        @unique
+  description String?
+  tags        TemplateTag[]
+  createdAt   DateTime      @default(now())
+}
+
+// Tags within a template
+model TemplateTag {
+  id         String   @id @default(cuid())
+  name       String
+  templateId String
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
 }
 
 model Transaction {
@@ -114,4 +135,3 @@ model CreditPackage {
   priceEur Int
   active   Boolean @default(true)
 }
-

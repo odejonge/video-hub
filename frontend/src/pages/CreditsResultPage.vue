@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/lib/api'
+import Icon from '@/components/Icons.vue'
 
-const route = useRoute()
-const router = useRouter()
 const auth = useAuthStore()
 
 const loading = ref(true)
@@ -16,8 +14,9 @@ const statusConfig = computed(() => {
   switch (paymentStatus.value) {
     case 'paid':
       return {
-        icon: '✓',
+        iconName: 'check' as const,
         iconBg: 'bg-green-500/20',
+        iconColor: 'text-green-400',
         title: 'Betaling gelukt!',
         message: 'Je credits zijn toegevoegd aan je account.',
         showButton: true,
@@ -25,40 +24,45 @@ const statusConfig = computed(() => {
     case 'open':
     case 'pending':
       return {
-        icon: '⏳',
+        iconName: 'settings' as const,
         iconBg: 'bg-yellow-500/20',
+        iconColor: 'text-yellow-400',
         title: 'Betaling in behandeling',
         message: 'Je betaling wordt nog verwerkt. Je credits worden toegevoegd zodra de betaling is voltooid.',
         showButton: true,
       }
     case 'canceled':
       return {
-        icon: '✕',
+        iconName: 'x' as const,
         iconBg: 'bg-gray-500/20',
+        iconColor: 'text-gray-400',
         title: 'Betaling geannuleerd',
         message: 'Je hebt de betaling geannuleerd. Er zijn geen credits in rekening gebracht.',
         showButton: true,
       }
     case 'expired':
       return {
-        icon: '⏰',
+        iconName: 'x' as const,
         iconBg: 'bg-orange-500/20',
+        iconColor: 'text-orange-400',
         title: 'Betaling verlopen',
         message: 'De betaling is verlopen. Probeer het opnieuw.',
         showButton: true,
       }
     case 'failed':
       return {
-        icon: '!',
+        iconName: 'x' as const,
         iconBg: 'bg-red-500/20',
+        iconColor: 'text-red-400',
         title: 'Betaling mislukt',
         message: 'Er is iets misgegaan met je betaling. Probeer het opnieuw of kies een andere betaalmethode.',
         showButton: true,
       }
     default:
       return {
-        icon: '?',
+        iconName: 'search' as const,
         iconBg: 'bg-gray-500/20',
+        iconColor: 'text-gray-400',
         title: 'Status onbekend',
         message: 'We konden de status van je betaling niet ophalen.',
         showButton: true,
@@ -111,8 +115,8 @@ onMounted(() => {
     
     <!-- Error -->
     <div v-else-if="error" class="text-center space-y-6 max-w-md">
-      <div class="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mx-auto">
-        <span class="text-3xl">!</span>
+      <div class="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mx-auto text-red-400">
+        <Icon name="x" :size="32" />
       </div>
       <h1 class="text-2xl font-bold">Er ging iets mis</h1>
       <p class="text-[var(--color-text-muted)]">
@@ -127,9 +131,9 @@ onMounted(() => {
     <div v-else class="text-center space-y-6 max-w-md">
       <div 
         class="w-16 h-16 rounded-full flex items-center justify-center mx-auto"
-        :class="statusConfig.iconBg"
+        :class="[statusConfig.iconBg, statusConfig.iconColor]"
       >
-        <span class="text-3xl">{{ statusConfig.icon }}</span>
+        <Icon :name="statusConfig.iconName" :size="32" />
       </div>
       <h1 class="text-2xl font-bold">{{ statusConfig.title }}</h1>
       <p class="text-[var(--color-text-muted)]">

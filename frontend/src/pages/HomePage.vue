@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth'
+import Icon from '@/components/Icons.vue'
 
 const auth = useAuthStore()
 </script>
@@ -60,7 +61,7 @@ const auth = useAuthStore()
       <div class="max-w-5xl mx-auto grid md:grid-cols-3 gap-8">
         <div class="card p-6 space-y-3">
           <div class="w-12 h-12 rounded-lg bg-brand-600/20 flex items-center justify-center">
-            <span class="text-2xl">🎬</span>
+            <Icon name="clip" :size="24" />
           </div>
           <h3 class="font-semibold text-lg">Clip & Tag</h3>
           <p class="text-[var(--color-text-muted)]">
@@ -70,7 +71,7 @@ const auth = useAuthStore()
 
         <div class="card p-6 space-y-3">
           <div class="w-12 h-12 rounded-lg bg-brand-600/20 flex items-center justify-center">
-            <span class="text-2xl">🐢</span>
+            <Icon name="play" :size="24" />
           </div>
           <h3 class="font-semibold text-lg">Slow Motion</h3>
           <p class="text-[var(--color-text-muted)]">
@@ -80,7 +81,7 @@ const auth = useAuthStore()
 
         <div class="card p-6 space-y-3">
           <div class="w-12 h-12 rounded-lg bg-brand-600/20 flex items-center justify-center">
-            <span class="text-2xl">📁</span>
+            <Icon name="folder" :size="24" />
           </div>
           <h3 class="font-semibold text-lg">Collecties</h3>
           <p class="text-[var(--color-text-muted)]">

@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/lib/api'
+import Icon from '@/components/Icons.vue'
 
 interface Clip {
   id: string
@@ -13,9 +14,13 @@ interface Clip {
     videoUrl: string
     bunnyVideoId: string
   }
-  danceMove?: { name: string }
   tags: { tag: { id: string; name: string } }[]
   collection: { id: string; name: string }
+}
+
+interface Collection {
+  id: string
+  name: string
 }
 
 const route = useRoute()
@@ -33,6 +38,19 @@ const controlsVisible = ref(true)
 const isPortrait = ref(false)
 const isFullscreen = ref(false)
 const isIOSMobile = ref(false)
+
+// Copy/Share modal state
+const showCopyModal = ref(false)
+const showShareModal = ref(false)
+const collections = ref<Collection[]>([])
+const selectedCollectionId = ref<string | null>(null)
+const shareEmail = ref('')
+const shareCollectionId = ref<string | null>(null)
+const isCopying = ref(false)
+const isSharing = ref(false)
+const copySuccess = ref(false)
+const shareSuccess = ref(false)
+const shareError = ref('')
 
 let hideControlsTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -65,30 +83,30 @@ async function loadClip() {
     const { data } = await api.get<Clip>(`/api/clips/${route.params.id}`)
     clip.value = data
   } catch (e) {
-    router.push('/tags')
+    router.push('/dashboard')
   } finally {
     loading.value = false
   }
 }
 
+async function loadCollections() {
+  try {
+    const { data } = await api.get<Collection[]>('/api/collections')
+    collections.value = data
+  } catch {}
+}
+
 function onVideoLoaded() {
   if (!videoRef.value || !clip.value) return
-  
-  // Check orientation
   const video = videoRef.value
   isPortrait.value = video.videoHeight > video.videoWidth
-  
-  // Seek to start
   video.currentTime = clip.value.startTime
   duration.value = video.duration
 }
 
 function onTimeUpdate() {
   if (!videoRef.value || !clip.value) return
-  
   currentTime.value = videoRef.value.currentTime
-  
-  // Loop at end
   if (currentTime.value >= clip.value.endTime) {
     videoRef.value.currentTime = clip.value.startTime
   }
@@ -96,7 +114,6 @@ function onTimeUpdate() {
 
 function togglePlay() {
   if (!videoRef.value) return
-  
   if (playing.value) {
     videoRef.value.pause()
   } else {
@@ -105,10 +122,8 @@ function togglePlay() {
   playing.value = !playing.value
 }
 
-// Toggle controls visibility on tap
 function toggleControls() {
   controlsVisible.value = !controlsVisible.value
-  
   if (controlsVisible.value && playing.value) {
     resetHideControlsTimer()
   } else if (hideControlsTimeout) {
@@ -122,32 +137,24 @@ const wasPlayingBeforeScrub = ref(false)
 
 function getSeekPosition(e: MouseEvent | TouchEvent) {
   if (!progressBarRef.value || !clip.value) return null
-  
   const rect = progressBarRef.value.getBoundingClientRect()
   const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
   const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-  
   return clip.value.startTime + (percent * clipDuration.value)
 }
 
 function startScrub(e: MouseEvent | TouchEvent) {
   if (!videoRef.value || !clip.value) return
-  
   isScrubbing.value = true
   wasPlayingBeforeScrub.value = playing.value
-  
   const newTime = getSeekPosition(e)
   if (newTime !== null) {
     videoRef.value.currentTime = newTime
   }
-  
-  // Pause during scrub
   if (playing.value) {
     videoRef.value.pause()
     playing.value = false
   }
-  
-  // Add global listeners for mouse
   if (!('touches' in e)) {
     document.addEventListener('mousemove', handleGlobalMouseMove)
     document.addEventListener('mouseup', handleGlobalMouseUp)
@@ -156,7 +163,6 @@ function startScrub(e: MouseEvent | TouchEvent) {
 
 function handleGlobalMouseMove(e: MouseEvent) {
   if (!isScrubbing.value || !videoRef.value) return
-  
   const newTime = getSeekPosition(e)
   if (newTime !== null) {
     videoRef.value.currentTime = newTime
@@ -171,7 +177,6 @@ function handleGlobalMouseUp() {
 
 function scrub(e: TouchEvent) {
   if (!isScrubbing.value || !videoRef.value) return
-  
   const newTime = getSeekPosition(e)
   if (newTime !== null) {
     videoRef.value.currentTime = newTime
@@ -181,13 +186,10 @@ function scrub(e: TouchEvent) {
 function endScrub() {
   if (!isScrubbing.value) return
   isScrubbing.value = false
-  
-  // Resume playback if it was playing before
   if (wasPlayingBeforeScrub.value && videoRef.value) {
     videoRef.value.play()
     playing.value = true
   }
-  
   resetHideControlsTimer()
 }
 
@@ -202,7 +204,6 @@ function resetHideControlsTimer() {
   if (hideControlsTimeout) {
     clearTimeout(hideControlsTimeout)
   }
-  
   if (playing.value && controlsVisible.value) {
     hideControlsTimeout = setTimeout(() => {
       controlsVisible.value = false
@@ -217,19 +218,11 @@ function canUseFullscreenAPI() {
 function toggleFullscreen() {
   const container = containerRef.value
   if (!container) return
-  
-  // Check if Fullscreen API is available
   if (!canUseFullscreenAPI()) {
-    // iOS Safari: Fullscreen API not available
-    // Page is already visually fullscreen with fixed positioning
-    // Just toggle the icon state for visual feedback (no actual effect)
     isFullscreen.value = !isFullscreen.value
     return
   }
-  
-  // Standard Fullscreen API (works on Android and Desktop)
   const isCurrentlyFullscreen = !!(document.fullscreenElement || (document as any).webkitFullscreenElement)
-  
   if (!isCurrentlyFullscreen) {
     if (container.requestFullscreen) {
       container.requestFullscreen().catch(err => console.error('Fullscreen failed:', err))
@@ -243,7 +236,6 @@ function toggleFullscreen() {
       (document as any).webkitExitFullscreen()
     }
   }
-  // State is updated by onFullscreenChange event listener
 }
 
 function onFullscreenChange() {
@@ -254,8 +246,71 @@ function goBack() {
   router.back()
 }
 
+// Copy clip to another collection
+async function openCopyModal() {
+  await loadCollections()
+  selectedCollectionId.value = null
+  copySuccess.value = false
+  showCopyModal.value = true
+}
+
+async function copyClip() {
+  if (!clip.value || !selectedCollectionId.value) return
+  isCopying.value = true
+  try {
+    await api.post(`/api/clips/${clip.value.id}/copy`, {
+      targetCollectionId: selectedCollectionId.value,
+    })
+    copySuccess.value = true
+    setTimeout(() => {
+      showCopyModal.value = false
+    }, 1500)
+  } catch (e) {
+    console.error('Copy failed:', e)
+  } finally {
+    isCopying.value = false
+  }
+}
+
+// Share clip with another user
+async function openShareModal() {
+  await loadCollections()
+  shareEmail.value = ''
+  shareCollectionId.value = null
+  shareSuccess.value = false
+  shareError.value = ''
+  showShareModal.value = true
+}
+
+async function shareClip() {
+  if (!clip.value || !shareEmail.value || !shareCollectionId.value) return
+  isSharing.value = true
+  shareError.value = ''
+  try {
+    await api.post(`/api/clips/${clip.value.id}/share`, {
+      targetUserEmail: shareEmail.value,
+      targetCollectionId: shareCollectionId.value,
+    })
+    shareSuccess.value = true
+    setTimeout(() => {
+      showShareModal.value = false
+    }, 1500)
+  } catch (e: any) {
+    if (e.message?.includes('user_not_found')) {
+      shareError.value = 'Gebruiker niet gevonden'
+    } else if (e.message?.includes('target_collection_not_found')) {
+      shareError.value = 'Collectie niet gevonden'
+    } else {
+      shareError.value = 'Delen mislukt'
+    }
+  } finally {
+    isSharing.value = false
+  }
+}
+
 function handleKeydown(e: KeyboardEvent) {
   if (!videoRef.value || !clip.value) return
+  if (showCopyModal.value || showShareModal.value) return
   
   switch (e.key) {
     case ' ':
@@ -303,7 +358,6 @@ onMounted(() => {
   document.addEventListener('fullscreenchange', onFullscreenChange)
   document.addEventListener('webkitfullscreenchange', onFullscreenChange)
   
-  // Detect iOS mobile (iPhone/iPad touch device)
   const ua = navigator.userAgent
   const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
   const isMobile = /Mobi|Android/i.test(ua) || navigator.maxTouchPoints > 1
@@ -345,7 +399,7 @@ onUnmounted(() => {
       preload="auto"
     />
 
-    <!-- Tap overlay for toggling controls - covers entire screen except header/footer when visible -->
+    <!-- Tap overlay -->
     <div 
       v-if="clip"
       class="absolute inset-0 z-10"
@@ -364,18 +418,25 @@ onUnmounted(() => {
         <div class="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent pointer-events-auto">
           <div class="flex items-center gap-4">
             <button @click="goBack" class="text-white p-2 -m-2">
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-              </svg>
+              <Icon name="arrow-left" :size="24" />
             </button>
             <div class="flex-1">
               <h1 class="text-white font-semibold truncate">{{ clip.title }}</h1>
               <div class="flex items-center gap-2 text-white/70 text-sm">
-                <span v-if="clip.danceMove">{{ clip.danceMove.name }}</span>
                 <span v-for="ct in clip.tags" :key="ct.tag.id" class="bg-white/20 px-2 py-0.5 rounded-full text-xs">
                   {{ ct.tag.name }}
                 </span>
               </div>
+            </div>
+            
+            <!-- Actions -->
+            <div class="flex gap-2">
+              <button @click="openCopyModal" class="text-white p-2 hover:bg-white/20 rounded" title="Kopiëren">
+                <Icon name="copy" :size="20" />
+              </button>
+              <button @click="openShareModal" class="text-white p-2 hover:bg-white/20 rounded" title="Delen">
+                <Icon name="share" :size="20" />
+              </button>
             </div>
           </div>
         </div>
@@ -392,10 +453,7 @@ onUnmounted(() => {
             class="py-3 -my-3 cursor-pointer select-none"
           >
             <div class="h-1 bg-white/30 rounded-full relative">
-              <div 
-                class="h-full bg-brand-500 rounded-full"
-                :style="{ width: `${progress}%` }"
-              />
+              <div class="h-full bg-brand-500 rounded-full" :style="{ width: `${progress}%` }" />
               <div 
                 class="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg transition-transform"
                 :class="isScrubbing ? 'scale-125' : ''"
@@ -406,24 +464,16 @@ onUnmounted(() => {
 
           <!-- Controls row -->
           <div class="flex items-center justify-between text-white mt-3">
-            <!-- Left: Play/Pause + Time -->
             <div class="flex items-center gap-3">
               <button @click.stop="togglePlay" class="p-1">
-                <svg v-if="!playing" class="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z"/>
-                </svg>
-                <svg v-else class="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                </svg>
+                <Icon :name="playing ? 'pause' : 'play'" :size="32" />
               </button>
               <div class="text-sm">
                 {{ formatTime(clipCurrentTime) }} / {{ formatTime(clipDuration) }}
               </div>
             </div>
 
-            <!-- Right: Speed + Fullscreen -->
             <div class="flex items-center gap-2">
-              <!-- Playback speed -->
               <div class="flex items-center gap-1">
                 <button 
                   v-for="rate in [0.25, 0.5, 1, 1.5, 2]"
@@ -436,22 +486,97 @@ onUnmounted(() => {
                 </button>
               </div>
               
-              <!-- Fullscreen - hide on iOS mobile where it doesn't work -->
               <button v-if="!isIOSMobile" @click.stop="toggleFullscreen" class="p-2 ml-2">
-                <!-- Expand icon (enter fullscreen) - arrows pointing outward -->
-                <svg v-if="!isFullscreen" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
-                </svg>
-                <!-- Shrink icon (exit fullscreen) - corners pointing inward -->
-                <svg v-else class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 4v4H4m16 0h-4V4M8 20v-4H4m16 0h-4v4"/>
-                </svg>
+                <Icon :name="isFullscreen ? 'shrink' : 'expand'" :size="24" />
               </button>
             </div>
           </div>
         </div>
       </div>
     </transition>
+
+    <!-- Copy Modal -->
+    <Teleport to="body">
+      <div v-if="showCopyModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" @click.self="showCopyModal = false">
+        <div class="bg-[var(--color-surface)] rounded-xl p-6 w-full max-w-sm space-y-4">
+          <h2 class="text-xl font-semibold text-white">Clip kopiëren</h2>
+          
+          <div v-if="copySuccess" class="text-center py-4">
+            <Icon name="check" :size="48" class="mx-auto mb-2 text-green-400" />
+            <p class="text-green-400">Gekopieerd!</p>
+          </div>
+          
+          <template v-else>
+            <p class="text-[var(--color-text-muted)]">Kies een collectie om de clip naar te kopiëren:</p>
+            
+            <div class="space-y-2 max-h-48 overflow-y-auto">
+              <button
+                v-for="col in collections.filter(c => c.id !== clip?.collection.id)"
+                :key="col.id"
+                @click="selectedCollectionId = col.id"
+                class="w-full p-3 rounded-lg text-left transition-colors"
+                :class="selectedCollectionId === col.id ? 'bg-brand-500/20 border border-brand-500' : 'bg-white/5 hover:bg-white/10'"
+              >
+                {{ col.name }}
+              </button>
+            </div>
+            
+            <div class="flex gap-3">
+              <button @click="showCopyModal = false" class="btn btn-secondary flex-1">Annuleren</button>
+              <button @click="copyClip" class="btn btn-primary flex-1" :disabled="!selectedCollectionId || isCopying">
+                {{ isCopying ? 'Kopiëren...' : 'Kopiëren' }}
+              </button>
+            </div>
+          </template>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Share Modal -->
+    <Teleport to="body">
+      <div v-if="showShareModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" @click.self="showShareModal = false">
+        <div class="bg-[var(--color-surface)] rounded-xl p-6 w-full max-w-sm space-y-4">
+          <h2 class="text-xl font-semibold text-white">Clip delen</h2>
+          
+          <div v-if="shareSuccess" class="text-center py-4">
+            <Icon name="check" :size="48" class="mx-auto mb-2 text-green-400" />
+            <p class="text-green-400">Gedeeld met {{ shareEmail }}!</p>
+          </div>
+          
+          <template v-else>
+            <p class="text-[var(--color-text-muted)]">Deel deze clip met een andere gebruiker:</p>
+            
+            <div class="space-y-3">
+              <input
+                v-model="shareEmail"
+                type="email"
+                placeholder="E-mail van ontvanger"
+                class="input w-full"
+              />
+              
+              <div>
+                <label class="text-sm text-[var(--color-text-muted)] mb-1 block">Naar welke collectie van die gebruiker?</label>
+                <input
+                  v-model="shareCollectionId"
+                  type="text"
+                  placeholder="Collectie ID (vraag aan ontvanger)"
+                  class="input w-full"
+                />
+              </div>
+            </div>
+            
+            <p v-if="shareError" class="text-red-400 text-sm">{{ shareError }}</p>
+            
+            <div class="flex gap-3">
+              <button @click="showShareModal = false" class="btn btn-secondary flex-1">Annuleren</button>
+              <button @click="shareClip" class="btn btn-primary flex-1" :disabled="!shareEmail || !shareCollectionId || isSharing">
+                {{ isSharing ? 'Delen...' : 'Delen' }}
+              </button>
+            </div>
+          </template>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 

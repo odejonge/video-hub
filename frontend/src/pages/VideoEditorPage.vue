@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/lib/api'
 import AppLayout from '@/components/AppLayout.vue'
+import Icon from '@/components/Icons.vue'
 
 interface Tag {
   tag: { id: string; name: string }
@@ -13,7 +14,13 @@ interface Clip {
   title: string
   startTime: number
   endTime: number | null
+  collectionId: string
   tags?: Tag[]
+}
+
+interface Collection {
+  id: string
+  name: string
 }
 
 interface Video {
@@ -22,7 +29,7 @@ interface Video {
   videoUrl: string
   thumbnailUrl: string | null
   duration: number | null
-  collectionId: string
+  owner: { id: string; name: string | null; email: string }
   clips: Clip[]
 }
 
@@ -31,6 +38,7 @@ const router = useRouter()
 
 const video = ref<Video | null>(null)
 const videoRef = ref<HTMLVideoElement | null>(null)
+const collections = ref<Collection[]>([])
 
 // Player state
 const isPlaying = ref(false)
@@ -44,16 +52,17 @@ const isCreatingClip = ref(false)
 const newClipTitle = ref('')
 const newClipStart = ref<number | null>(null)
 const newClipEnd = ref<number | null>(null)
+const newClipCollectionId = ref<string | null>(null)
 const newClipTagInput = ref('')
 const newClipTags = ref<string[]>([])
 const isSaving = ref(false)
 
-// Tags autocomplete
-const allTags = ref<{ id: string; name: string }[]>([])
+// Tags for selected collection
+const collectionTags = ref<{ id: string; name: string }[]>([])
 const showTagDropdown = ref(false)
 const filteredTags = computed(() => {
   const search = newClipTagInput.value.toLowerCase()
-  return allTags.value
+  return collectionTags.value
     .filter(t => 
       t.name.includes(search) && 
       !newClipTags.value.includes(t.name)
@@ -64,6 +73,22 @@ const filteredTags = computed(() => {
 // Selected clip for preview
 const previewClip = ref<Clip | null>(null)
 
+// Edit clip modal
+const showEditClipModal = ref(false)
+const editingClip = ref<Clip | null>(null)
+const editClipTitle = ref('')
+const editClipTags = ref<string[]>([])
+const editClipTagInput = ref('')
+const showEditTagDropdown = ref(false)
+const isSavingEdit = ref(false)
+
+const filteredEditTags = computed(() => {
+  const search = editClipTagInput.value.toLowerCase()
+  return collectionTags.value
+    .filter(t => t.name.includes(search) && !editClipTags.value.includes(t.name))
+    .slice(0, 10)
+})
+
 // Mobile tab
 const activeTab = ref<'video' | 'clips'>('video')
 
@@ -72,16 +97,38 @@ async function loadVideo() {
     const res = await api.get<Video>(`/api/videos/${route.params.id}`)
     video.value = res.data
   } catch {
-    router.push('/dashboard')
+    router.push('/videos')
   }
 }
 
-async function loadAllTags() {
+async function loadCollections() {
   try {
-    const res = await api.get<{ id: string; name: string }[]>('/api/tags')
-    allTags.value = res.data
+    const res = await api.get<Collection[]>('/api/collections')
+    collections.value = res.data
+    if (collections.value.length > 0 && !newClipCollectionId.value) {
+      newClipCollectionId.value = collections.value[0].id
+    }
   } catch {}
 }
+
+async function loadCollectionTags() {
+  if (!newClipCollectionId.value) {
+    collectionTags.value = []
+    return
+  }
+  try {
+    const res = await api.get<{ id: string; name: string }[]>(`/api/collections/${newClipCollectionId.value}/tags`)
+    collectionTags.value = res.data
+  } catch {
+    collectionTags.value = []
+  }
+}
+
+watch(newClipCollectionId, () => {
+  loadCollectionTags()
+  // Reset tags when collection changes
+  newClipTags.value = []
+})
 
 function selectTagFromDropdown(tagName: string) {
   if (!newClipTags.value.includes(tagName)) {
@@ -90,7 +137,6 @@ function selectTagFromDropdown(tagName: string) {
   newClipTagInput.value = ''
   showTagDropdown.value = false
 }
-
 
 // Player controls
 function togglePlay() {
@@ -162,6 +208,10 @@ function startCreatingClip() {
   newClipTagInput.value = ''
   newClipTags.value = []
   previewClip.value = null
+  if (collections.value.length > 0 && !newClipCollectionId.value) {
+    newClipCollectionId.value = collections.value[0].id
+  }
+  loadCollectionTags()
 }
 
 function addTag() {
@@ -191,7 +241,7 @@ function setClipEnd() {
 }
 
 async function saveClip() {
-  if (!video.value || !newClipTitle.value.trim() || newClipStart.value === null) return
+  if (!video.value || !newClipTitle.value.trim() || newClipStart.value === null || !newClipCollectionId.value) return
 
   isSaving.value = true
   try {
@@ -199,6 +249,7 @@ async function saveClip() {
       title: newClipTitle.value,
       startTime: newClipStart.value,
       endTime: newClipEnd.value,
+      collectionId: newClipCollectionId.value,
       tagNames: newClipTags.value,
     })
 
@@ -206,8 +257,8 @@ async function saveClip() {
     video.value.clips.sort((a, b) => a.startTime - b.startTime)
     isCreatingClip.value = false
     previewClip.value = null
-    activeTab.value = 'clips' // Switch to clips tab on mobile
-    loadAllTags() // Refresh tags list for new tags
+    activeTab.value = 'clips'
+    loadCollectionTags() // Refresh tags for new ones
   } catch (err) {
     console.error('Failed to save clip:', err)
   } finally {
@@ -217,7 +268,7 @@ async function saveClip() {
 
 function playClipPreview(clip: Clip) {
   previewClip.value = clip
-  activeTab.value = 'video' // Switch to video tab on mobile
+  activeTab.value = 'video'
   if (videoRef.value) {
     videoRef.value.currentTime = clip.startTime
     videoRef.value.play()
@@ -236,6 +287,68 @@ async function deleteClip(clipId: string) {
     video.value.clips = video.value.clips.filter(c => c.id !== clipId)
   } catch (err) {
     console.error('Failed to delete clip:', err)
+  }
+}
+
+function openEditClipModal(clip: Clip) {
+  editingClip.value = clip
+  editClipTitle.value = clip.title
+  editClipTags.value = clip.tags?.map(ct => ct.tag.name) || []
+  editClipTagInput.value = ''
+  
+  // Load tags for the clip's collection
+  if (clip.collectionId) {
+    newClipCollectionId.value = clip.collectionId
+    loadCollectionTags()
+  }
+  
+  showEditClipModal.value = true
+}
+
+function addEditTag() {
+  const tag = editClipTagInput.value.trim().toLowerCase()
+  if (tag && !editClipTags.value.includes(tag)) {
+    editClipTags.value = [...editClipTags.value, tag]
+  }
+  editClipTagInput.value = ''
+  showEditTagDropdown.value = false
+}
+
+function selectEditTag(tagName: string) {
+  if (!editClipTags.value.includes(tagName)) {
+    editClipTags.value = [...editClipTags.value, tagName]
+  }
+  editClipTagInput.value = ''
+  showEditTagDropdown.value = false
+}
+
+function removeEditTag(tag: string) {
+  editClipTags.value = editClipTags.value.filter(t => t !== tag)
+}
+
+async function saveClipEdit() {
+  if (!editingClip.value || !editClipTitle.value.trim() || !video.value) return
+
+  isSavingEdit.value = true
+  try {
+    const { data: updated } = await api.patch<Clip>(`/api/clips/${editingClip.value.id}`, {
+      title: editClipTitle.value,
+      tagNames: editClipTags.value,
+    })
+    
+    // Update clip in list
+    const idx = video.value.clips.findIndex(c => c.id === editingClip.value!.id)
+    if (idx !== -1) {
+      video.value.clips[idx] = updated
+    }
+    
+    showEditClipModal.value = false
+    editingClip.value = null
+    loadCollectionTags() // Refresh tags for any new ones
+  } catch (err) {
+    console.error('Failed to update clip:', err)
+  } finally {
+    isSavingEdit.value = false
   }
 }
 
@@ -265,7 +378,7 @@ function handleKeydown(e: KeyboardEvent) {
 
 onMounted(() => {
   loadVideo()
-  loadAllTags()
+  loadCollections()
   document.addEventListener('keydown', handleKeydown)
 })
 
@@ -279,11 +392,10 @@ onUnmounted(() => {
     <div class="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-8">
       <!-- Back link -->
       <RouterLink
-        v-if="video"
-        :to="`/collections/${video.collectionId}`"
+        to="/videos"
         class="text-[var(--color-text-muted)] hover:text-white mb-3 inline-flex items-center gap-1 text-sm"
       >
-        ← Terug
+        <Icon name="arrow-left" :size="16" /> Terug naar video's
       </RouterLink>
 
       <div v-if="video">
@@ -328,23 +440,20 @@ onUnmounted(() => {
                   @click="togglePlay"
                 />
 
-                <!-- Current time overlay -->
                 <div class="absolute bottom-2 left-2 sm:bottom-4 sm:left-4 bg-black/70 px-2 py-1 rounded text-xs sm:text-sm font-mono">
                   {{ formatTimeShort(currentTime) }}
                 </div>
 
-                <!-- Preview indicator -->
                 <div
                   v-if="previewClip"
                   class="absolute top-2 left-2 sm:top-4 sm:left-4 bg-brand-600 px-2 py-1 rounded text-xs sm:text-sm"
                 >
-                  ▶ {{ previewClip.title }}
+                  <Icon name="play" :size="14" /> {{ previewClip.title }}
                 </div>
               </div>
 
               <!-- Controls -->
               <div class="p-3 sm:p-4 space-y-3 sm:space-y-4">
-                <!-- Progress bar - touch friendly -->
                 <div class="space-y-2">
                   <div class="relative">
                     <input
@@ -359,8 +468,6 @@ onUnmounted(() => {
                              [&::-webkit-slider-thumb]:sm:w-4 [&::-webkit-slider-thumb]:sm:h-4
                              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-brand-500"
                     />
-
-                    <!-- Clip markers on timeline -->
                     <div
                       v-for="clip in video.clips"
                       :key="clip.id"
@@ -377,29 +484,18 @@ onUnmounted(() => {
                   </div>
                 </div>
 
-                <!-- Play controls -->
                 <div class="flex items-center justify-center gap-2 sm:gap-4">
-                  <button
-                    @click="skipBack"
-                    class="w-10 h-10 sm:w-8 sm:h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors text-lg sm:text-base"
-                  >
-                    ⏪
+                  <button @click="skipBack" class="w-10 h-10 sm:w-8 sm:h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">
+                    <Icon name="skip-back" :size="18" />
                   </button>
-                  <button
-                    @click="togglePlay"
-                    class="w-14 h-14 sm:w-12 sm:h-12 rounded-full bg-brand-600 hover:bg-brand-500 flex items-center justify-center transition-colors text-xl"
-                  >
-                    {{ isPlaying ? '❚❚' : '▶' }}
+                  <button @click="togglePlay" class="w-14 h-14 sm:w-12 sm:h-12 rounded-full bg-brand-600 hover:bg-brand-500 flex items-center justify-center">
+                    <Icon :name="isPlaying ? 'pause' : 'play'" :size="24" />
                   </button>
-                  <button
-                    @click="skipForward"
-                    class="w-10 h-10 sm:w-8 sm:h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors text-lg sm:text-base"
-                  >
-                    ⏩
+                  <button @click="skipForward" class="w-10 h-10 sm:w-8 sm:h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">
+                    <Icon name="skip-forward" :size="18" />
                   </button>
                 </div>
 
-                <!-- Playback rate - horizontal scroll on mobile -->
                 <div class="flex items-center gap-2 overflow-x-auto pb-1 -mx-3 px-3 sm:mx-0 sm:px-0">
                   <span class="text-xs sm:text-sm text-[var(--color-text-muted)] whitespace-nowrap">Snelheid:</span>
                   <div class="flex gap-1">
@@ -408,7 +504,7 @@ onUnmounted(() => {
                       :key="rate"
                       @click="setPlaybackRate(rate)"
                       class="px-3 py-1.5 sm:px-2 sm:py-1 text-sm rounded transition-colors whitespace-nowrap"
-                      :class="playbackRate === rate ? 'bg-brand-600 text-white' : 'bg-white/10 hover:bg-white/15'"
+                      :class="playbackRate === rate ? 'bg-brand-600 text-white' : 'bg-white/10'"
                     >
                       {{ rate }}x
                     </button>
@@ -421,35 +517,32 @@ onUnmounted(() => {
             <div v-if="isCreatingClip" class="card p-3 sm:p-4 space-y-3 sm:space-y-4 border-brand-500">
               <h3 class="font-semibold">Nieuwe clip maken</h3>
 
-              <input
-                v-model="newClipTitle"
-                type="text"
-                placeholder="Titel van de clip"
-                class="input w-full"
-              />
+              <input v-model="newClipTitle" type="text" placeholder="Titel van de clip" class="input w-full" />
 
-              <!-- Start/End buttons - stacked on mobile -->
+              <!-- Collection selector -->
+              <div>
+                <label class="text-sm text-[var(--color-text-muted)] mb-1 block">Toevoegen aan collectie</label>
+                <select v-model="newClipCollectionId" class="input w-full">
+                  <option v-for="col in collections" :key="col.id" :value="col.id">{{ col.name }}</option>
+                </select>
+              </div>
+
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   @click="setClipStart"
                   class="flex items-center justify-between p-3 rounded-lg transition-colors"
                   :class="newClipStart !== null ? 'bg-green-500/20 text-green-400' : 'bg-white/10'"
                 >
-                  <span class="font-medium">Start</span>
-                  <span class="font-mono">
-                    {{ newClipStart !== null ? formatTime(newClipStart) : 'Tap om te zetten' }}
-                  </span>
+                  <span class="font-medium">Start (I)</span>
+                  <span class="font-mono">{{ newClipStart !== null ? formatTime(newClipStart) : '--' }}</span>
                 </button>
-
                 <button
                   @click="setClipEnd"
                   class="flex items-center justify-between p-3 rounded-lg transition-colors"
                   :class="newClipEnd !== null ? 'bg-red-500/20 text-red-400' : 'bg-white/10'"
                 >
-                  <span class="font-medium">Eind</span>
-                  <span class="font-mono">
-                    {{ newClipEnd !== null ? formatTime(newClipEnd) : 'Tap om te zetten' }}
-                  </span>
+                  <span class="font-medium">Eind (O)</span>
+                  <span class="font-mono">{{ newClipEnd !== null ? formatTime(newClipEnd) : '--' }}</span>
                 </button>
               </div>
 
@@ -462,7 +555,7 @@ onUnmounted(() => {
                       :value="newClipTagInput"
                       @input="newClipTagInput = ($event.target as HTMLInputElement).value; showTagDropdown = true"
                       @focus="showTagDropdown = true"
-                      @blur="setTimeout(() => showTagDropdown = false, 200)"
+                      @blur="showTagDropdown = false"
                       type="text"
                       placeholder="Zoek of maak tag..."
                       class="input flex-1"
@@ -471,12 +564,10 @@ onUnmounted(() => {
                     <button type="button" @click="addTag" class="btn btn-secondary px-3">+</button>
                   </div>
                   
-                  <!-- Tag dropdown -->
                   <div 
                     v-if="showTagDropdown && (filteredTags.length > 0 || newClipTagInput.trim())"
                     class="absolute z-10 top-full left-0 right-12 mt-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-xl max-h-48 overflow-y-auto"
                   >
-                    <!-- Existing tags -->
                     <button
                       v-for="tag in filteredTags"
                       :key="tag.id"
@@ -484,24 +575,22 @@ onUnmounted(() => {
                       @mousedown.prevent="selectTagFromDropdown(tag.name)"
                       class="w-full text-left px-3 py-2 hover:bg-[var(--color-bg-tertiary)] flex items-center gap-2"
                     >
-                      <span class="text-brand-400">🏷️</span>
+                      <Icon name="tag" :size="16" class="text-brand-400" />
                       {{ tag.name }}
                     </button>
                     
-                    <!-- Create new tag option -->
                     <button
-                      v-if="newClipTagInput.trim() && !allTags.some(t => t.name === newClipTagInput.trim().toLowerCase())"
+                      v-if="newClipTagInput.trim() && !collectionTags.some(t => t.name === newClipTagInput.trim().toLowerCase())"
                       type="button"
                       @mousedown.prevent="addTag"
                       class="w-full text-left px-3 py-2 hover:bg-[var(--color-bg-tertiary)] flex items-center gap-2 border-t border-[var(--color-border)]"
                     >
-                      <span class="text-green-400">+</span>
+                      <Icon name="plus" :size="16" class="text-green-400" />
                       <span>Nieuwe tag: <strong>{{ newClipTagInput.trim().toLowerCase() }}</strong></span>
                     </button>
                   </div>
                 </div>
                 
-                <!-- Selected tags -->
                 <div v-if="newClipTags.length" class="flex flex-wrap gap-2">
                   <span
                     v-for="tag in newClipTags"
@@ -515,34 +604,24 @@ onUnmounted(() => {
               </div>
 
               <div class="flex gap-2 sm:gap-3">
-                <button @click="cancelCreatingClip" class="btn btn-secondary flex-1">
-                  Annuleren
-                </button>
+                <button @click="cancelCreatingClip" class="btn btn-secondary flex-1">Annuleren</button>
                 <button
                   @click="saveClip"
                   class="btn btn-primary flex-1"
-                  :disabled="isSaving || !newClipTitle.trim() || newClipStart === null"
+                  :disabled="isSaving || !newClipTitle.trim() || newClipStart === null || !newClipCollectionId"
                 >
                   {{ isSaving ? 'Opslaan...' : 'Opslaan' }}
                 </button>
               </div>
             </div>
 
-            <!-- Create clip button -->
-            <button
-              v-else
-              @click="startCreatingClip"
-              class="btn btn-primary w-full py-3"
-            >
-              + Nieuwe clip maken
+            <button v-else @click="startCreatingClip" class="btn btn-primary w-full py-3 flex items-center justify-center gap-2">
+              <Icon name="plus" :size="18" /> Nieuwe clip maken
             </button>
           </div>
 
           <!-- Clips Sidebar -->
-          <div 
-            class="space-y-3 sm:space-y-4"
-            :class="{ 'hidden lg:block': activeTab === 'video' }"
-          >
+          <div class="space-y-3 sm:space-y-4" :class="{ 'hidden lg:block': activeTab === 'video' }">
             <h2 class="text-lg sm:text-xl font-semibold hidden lg:block">Clips ({{ video.clips.length }})</h2>
 
             <div v-if="video.clips.length" class="space-y-2">
@@ -553,35 +632,26 @@ onUnmounted(() => {
                 :class="previewClip?.id === clip.id ? 'border-brand-500' : ''"
               >
                 <div class="flex items-start justify-between gap-2">
-                  <div class="flex-1 min-w-0" @click="playClipPreview(clip)">
+                  <div class="flex-1 min-w-0 cursor-pointer" @click="playClipPreview(clip)">
                     <h4 class="font-medium truncate">{{ clip.title }}</h4>
                     <div class="text-sm text-[var(--color-text-muted)] font-mono">
                       {{ formatTimeShort(clip.startTime) }} → {{ clip.endTime ? formatTimeShort(clip.endTime) : 'eind' }}
                     </div>
                     <div v-if="clip.tags?.length" class="flex flex-wrap gap-1 mt-1">
-                      <span
-                        v-for="ct in clip.tags"
-                        :key="ct.tag.id"
-                        class="text-xs bg-[var(--color-bg-tertiary)] px-2 py-0.5 rounded-full"
-                      >
+                      <span v-for="ct in clip.tags" :key="ct.tag.id" class="text-xs bg-[var(--color-bg-tertiary)] px-2 py-0.5 rounded-full">
                         {{ ct.tag.name }}
                       </span>
                     </div>
                   </div>
                   <div class="flex gap-1">
-                    <button
-                      @click="playClipPreview(clip)"
-                      class="p-2 text-sm hover:bg-white/10 rounded"
-                      title="Afspelen"
-                    >
-                      ▶
+                    <button @click="playClipPreview(clip)" class="p-2 hover:bg-white/10 rounded" title="Afspelen">
+                      <Icon name="play" :size="16" />
                     </button>
-                    <button
-                      @click="deleteClip(clip.id)"
-                      class="p-2 text-sm hover:bg-red-500/20 text-red-400 rounded"
-                      title="Verwijderen"
-                    >
-                      🗑
+                    <button @click="openEditClipModal(clip)" class="p-2 hover:bg-white/10 rounded" title="Bewerken">
+                      <Icon name="edit" :size="16" />
+                    </button>
+                    <button @click="deleteClip(clip.id)" class="p-2 hover:bg-red-500/20 text-red-400 rounded" title="Verwijderen">
+                      <Icon name="trash" :size="16" />
                     </button>
                   </div>
                 </div>
@@ -593,26 +663,102 @@ onUnmounted(() => {
               <p class="text-sm mt-1">Maak je eerste clip</p>
             </div>
 
-            <!-- Preview stop button -->
-            <button
-              v-if="previewClip"
-              @click="stopPreview"
-              class="btn btn-secondary w-full"
-            >
-              Stop preview
-            </button>
+            <button v-if="previewClip" @click="stopPreview" class="btn btn-secondary w-full">Stop preview</button>
 
-            <!-- Mobile: button to go to video tab to create clip -->
             <button
               v-if="!isCreatingClip"
               @click="activeTab = 'video'; startCreatingClip()"
-              class="btn btn-primary w-full lg:hidden"
+              class="btn btn-primary w-full lg:hidden flex items-center justify-center gap-2"
             >
-              + Nieuwe clip maken
+              <Icon name="plus" :size="18" /> Nieuwe clip maken
             </button>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- Edit Clip Modal -->
+    <Teleport to="body">
+      <div v-if="showEditClipModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" @click.self="showEditClipModal = false">
+        <div class="card p-6 w-full max-w-md space-y-4">
+          <h2 class="text-xl font-semibold">Clip bewerken</h2>
+          
+          <!-- Title -->
+          <div>
+            <label class="block text-sm text-[var(--color-text-muted)] mb-1">Titel</label>
+            <input
+              v-model="editClipTitle"
+              type="text"
+              class="input w-full"
+            />
+          </div>
+
+          <!-- Tags -->
+          <div class="space-y-2">
+            <label class="block text-sm text-[var(--color-text-muted)]">Tags</label>
+            
+            <div class="relative">
+              <div class="flex gap-2">
+                <input
+                  v-model="editClipTagInput"
+                  @input="showEditTagDropdown = true"
+                  @focus="showEditTagDropdown = true"
+                  @blur="showEditTagDropdown = false"
+                  @keyup.enter="addEditTag"
+                  type="text"
+                  placeholder="Zoek of maak tag..."
+                  class="input flex-1"
+                />
+                <button type="button" @click="addEditTag" class="btn btn-secondary px-3">+</button>
+              </div>
+              
+              <div 
+                v-if="showEditTagDropdown && (filteredEditTags.length > 0 || editClipTagInput.trim())"
+                class="absolute z-10 top-full left-0 right-12 mt-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-xl max-h-48 overflow-y-auto"
+              >
+                <button
+                  v-for="tag in filteredEditTags"
+                  :key="tag.id"
+                  type="button"
+                  @mousedown.prevent="selectEditTag(tag.name)"
+                  class="w-full text-left px-3 py-2 hover:bg-[var(--color-bg-tertiary)] flex items-center gap-2"
+                >
+                  <Icon name="tag" :size="16" class="text-brand-400" />
+                  {{ tag.name }}
+                </button>
+                
+                <button
+                  v-if="editClipTagInput.trim() && !collectionTags.some(t => t.name === editClipTagInput.trim().toLowerCase())"
+                  type="button"
+                  @mousedown.prevent="addEditTag"
+                  class="w-full text-left px-3 py-2 hover:bg-[var(--color-bg-tertiary)] flex items-center gap-2 border-t border-[var(--color-border)]"
+                >
+                  <Icon name="plus" :size="16" class="text-green-400" />
+                  <span>Nieuwe tag: <strong>{{ editClipTagInput.trim().toLowerCase() }}</strong></span>
+                </button>
+              </div>
+            </div>
+            
+            <div v-if="editClipTags.length" class="flex flex-wrap gap-2">
+              <span
+                v-for="tag in editClipTags"
+                :key="tag"
+                class="inline-flex items-center gap-1 bg-brand-600/20 text-brand-400 px-2 py-1 rounded-full text-sm"
+              >
+                {{ tag }}
+                <button type="button" @click="removeEditTag(tag)" class="hover:text-white">×</button>
+              </span>
+            </div>
+          </div>
+
+          <div class="flex gap-3 justify-end pt-2">
+            <button @click="showEditClipModal = false" class="btn btn-secondary">Annuleren</button>
+            <button @click="saveClipEdit" class="btn btn-primary" :disabled="!editClipTitle.trim() || isSavingEdit">
+              {{ isSavingEdit ? 'Opslaan...' : 'Opslaan' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </AppLayout>
 </template>

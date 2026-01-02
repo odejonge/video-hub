@@ -26,15 +26,15 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
-      path: '/tags/:tagName',
-      name: 'tag-clips',
-      component: () => import('@/pages/TagClipsPage.vue'),
-      meta: { requiresAuth: true },
-    },
-    {
       path: '/clips/:id',
       name: 'clip-viewer',
       component: () => import('@/pages/ClipViewerPage.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/feed',
+      name: 'feed',
+      component: () => import('@/pages/FeedPage.vue'),
       meta: { requiresAuth: true },
     },
     {
@@ -47,6 +47,12 @@ const router = createRouter({
       path: '/collections/:id',
       name: 'collection',
       component: () => import('@/pages/CollectionPage.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/videos',
+      name: 'videos',
+      component: () => import('@/pages/VideosPage.vue'),
       meta: { requiresAuth: true },
     },
     {

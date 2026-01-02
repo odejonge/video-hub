@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { api } from '@/lib/api'
+import Icon from '@/components/Icons.vue'
 
 interface DanceMove {
   id: string
@@ -236,7 +237,7 @@ watch(
         @click="emit('close')"
         class="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors"
       >
-        ✕
+        <Icon name="x" :size="20" />
       </button>
 
       <!-- Current time overlay -->
@@ -262,7 +263,7 @@ watch(
           @click="startEditing"
           class="btn btn-secondary text-sm"
         >
-          ✏️ Bewerken
+          <Icon name="edit" :size="16" /> Bewerken
         </button>
       </div>
 
@@ -286,7 +287,7 @@ watch(
           @click="togglePlay"
           class="w-10 h-10 rounded-full bg-brand-600 hover:bg-brand-500 flex items-center justify-center transition-colors"
         >
-          {{ isPlaying ? '❚❚' : '▶' }}
+          <Icon :name="isPlaying ? 'pause' : 'play'" :size="20" />
         </button>
 
         <span class="text-sm text-[var(--color-text-muted)] w-16 font-mono">

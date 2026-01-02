@@ -6,19 +6,17 @@ const router = Router()
 
 const CREDITS_PER_MINUTE = 10
 
-// Get all videos in a collection
-router.get('/collection/:collectionId', auth, async (req: AuthRequest, res) => {
-  const collection = await prisma.collection.findFirst({
-    where: { id: req.params.collectionId, userId: req.user!.id },
-  })
-
-  if (!collection) {
-    return res.status(404).json({ error: 'collection_not_found' })
-  }
-
+// Get all videos user has access to (owned + shared)
+router.get('/', auth, async (req: AuthRequest, res) => {
   const videos = await prisma.video.findMany({
-    where: { collectionId: req.params.collectionId },
+    where: {
+      OR: [
+        { ownerId: req.user!.id },
+        { sharedWith: { some: { userId: req.user!.id } } },
+      ],
+    },
     include: {
+      owner: { select: { id: true, name: true, email: true } },
       _count: { select: { clips: true } },
     },
     orderBy: { createdAt: 'desc' },
@@ -27,23 +25,38 @@ router.get('/collection/:collectionId', auth, async (req: AuthRequest, res) => {
   res.json(videos)
 })
 
-// Get single video with its clips
+// Get single video with its clips (for a specific collection context)
 router.get('/:id', auth, async (req: AuthRequest, res) => {
+  const { collectionId } = req.query
+
   const video = await prisma.video.findFirst({
-    where: { id: req.params.id },
+    where: {
+      id: req.params.id,
+      OR: [
+        { ownerId: req.user!.id },
+        { sharedWith: { some: { userId: req.user!.id } } },
+      ],
+    },
     include: {
-      collection: true,
-      clips: {
-        include: {
-          danceMove: true,
-          tags: { include: { tag: true } },
-        },
-        orderBy: { startTime: 'asc' },
-      },
+      owner: { select: { id: true, name: true, email: true } },
+      clips: collectionId
+        ? {
+            where: { collectionId: collectionId as string },
+            include: {
+              tags: { include: { tag: true } },
+            },
+            orderBy: { startTime: 'asc' },
+          }
+        : {
+            include: {
+              tags: { include: { tag: true } },
+            },
+            orderBy: { startTime: 'asc' },
+          },
     },
   })
 
-  if (!video || video.collection.userId !== req.user!.id) {
+  if (!video) {
     return res.status(404).json({ error: 'video_not_found' })
   }
 
@@ -52,16 +65,7 @@ router.get('/:id', auth, async (req: AuthRequest, res) => {
 
 // Upload a new source video
 router.post('/upload-url', auth, async (req: AuthRequest, res) => {
-  const { title, durationSeconds, collectionId } = req.body
-
-  // Verify collection ownership
-  const collection = await prisma.collection.findFirst({
-    where: { id: collectionId, userId: req.user!.id },
-  })
-
-  if (!collection) {
-    return res.status(404).json({ error: 'collection_not_found' })
-  }
+  const { title, durationSeconds } = req.body
 
   // Calculate credits needed
   const creditsNeeded = Math.ceil((durationSeconds / 60) * CREDITS_PER_MINUTE)
@@ -135,16 +139,7 @@ router.post('/upload-url', auth, async (req: AuthRequest, res) => {
 
 // Confirm video upload complete
 router.post('/confirm-upload', auth, async (req: AuthRequest, res) => {
-  const { bunnyVideoId, title, collectionId, duration } = req.body
-
-  // Verify collection ownership
-  const collection = await prisma.collection.findFirst({
-    where: { id: collectionId, userId: req.user!.id },
-  })
-
-  if (!collection) {
-    return res.status(404).json({ error: 'collection_not_found' })
-  }
+  const { bunnyVideoId, title, duration } = req.body
 
   const libraryId = process.env.BUNNY_LIBRARY_ID
   const cdnHostname = process.env.BUNNY_CDN_HOSTNAME || `vz-${libraryId}.b-cdn.net`
@@ -158,28 +153,119 @@ router.post('/confirm-upload', auth, async (req: AuthRequest, res) => {
       thumbnailUrl,
       bunnyVideoId,
       duration,
-      collectionId,
+      ownerId: req.user!.id,
     },
   })
 
   res.status(201).json(video)
 })
 
-// Create a clip from a video
-router.post('/:videoId/clips', auth, async (req: AuthRequest, res) => {
-  const { title, startTime, endTime, danceMoveId, tagNames } = req.body
+// Share video with another user
+router.post('/:id/share', auth, async (req: AuthRequest, res) => {
+  const { email } = req.body
 
-  // Verify video ownership
+  // Verify ownership
   const video = await prisma.video.findFirst({
-    where: { id: req.params.videoId },
-    include: { collection: true },
+    where: { id: req.params.id, ownerId: req.user!.id },
   })
 
-  if (!video || video.collection.userId !== req.user!.id) {
+  if (!video) {
     return res.status(404).json({ error: 'video_not_found' })
   }
 
-  // Create or get tags (case-insensitive)
+  // Find target user
+  const targetUser = await prisma.user.findUnique({ where: { email } })
+
+  if (!targetUser) {
+    return res.status(404).json({ error: 'user_not_found' })
+  }
+
+  if (targetUser.id === req.user!.id) {
+    return res.status(400).json({ error: 'cannot_share_with_self' })
+  }
+
+  // Create or update access
+  await prisma.videoAccess.upsert({
+    where: {
+      videoId_userId: { videoId: video.id, userId: targetUser.id },
+    },
+    update: {},
+    create: {
+      videoId: video.id,
+      userId: targetUser.id,
+    },
+  })
+
+  res.json({ success: true, sharedWith: targetUser.email })
+})
+
+// Remove video sharing
+router.delete('/:id/share/:userId', auth, async (req: AuthRequest, res) => {
+  // Verify ownership
+  const video = await prisma.video.findFirst({
+    where: { id: req.params.id, ownerId: req.user!.id },
+  })
+
+  if (!video) {
+    return res.status(404).json({ error: 'video_not_found' })
+  }
+
+  await prisma.videoAccess.deleteMany({
+    where: { videoId: video.id, userId: req.params.userId },
+  })
+
+  res.status(204).send()
+})
+
+// Get users video is shared with
+router.get('/:id/shared-with', auth, async (req: AuthRequest, res) => {
+  const video = await prisma.video.findFirst({
+    where: { id: req.params.id, ownerId: req.user!.id },
+    include: {
+      sharedWith: {
+        include: {
+          user: { select: { id: true, name: true, email: true, avatar: true } },
+        },
+      },
+    },
+  })
+
+  if (!video) {
+    return res.status(404).json({ error: 'video_not_found' })
+  }
+
+  res.json(video.sharedWith.map((access) => access.user))
+})
+
+// Create a clip from a video into a collection
+router.post('/:videoId/clips', auth, async (req: AuthRequest, res) => {
+  const { title, startTime, endTime, collectionId, tagNames } = req.body
+
+  // Verify video access
+  const video = await prisma.video.findFirst({
+    where: {
+      id: req.params.videoId,
+      OR: [
+        { ownerId: req.user!.id },
+        { sharedWith: { some: { userId: req.user!.id } } },
+      ],
+    },
+  })
+
+  if (!video) {
+    return res.status(404).json({ error: 'video_not_found' })
+  }
+
+  // Verify collection ownership
+  const collection = await prisma.collection.findFirst({
+    where: { id: collectionId, userId: req.user!.id },
+  })
+
+  if (!collection) {
+    return res.status(404).json({ error: 'collection_not_found' })
+  }
+
+  // Create or get tags within this collection (case-insensitive)
   const tagConnections: { tagId: string }[] = []
   if (tagNames?.length) {
     for (const name of tagNames) {
@@ -187,9 +273,11 @@ router.post('/:videoId/clips', auth, async (req: AuthRequest, res) => {
       if (!normalizedName) continue
 
       const tag = await prisma.tag.upsert({
-        where: { name: normalizedName },
+        where: {
+          collectionId_name: { collectionId, name: normalizedName },
+        },
         update: {},
-        create: { name: normalizedName },
+        create: { name: normalizedName, collectionId },
       })
       tagConnections.push({ tagId: tag.id })
     }
@@ -201,14 +289,10 @@ router.post('/:videoId/clips', auth, async (req: AuthRequest, res) => {
       startTime: startTime ?? 0,
       endTime,
       videoId: video.id,
-      collectionId: video.collectionId,
-      danceMoveId,
-      tags: tagConnections.length
-        ? { create: tagConnections }
-        : undefined,
+      collectionId,
+      tags: tagConnections.length ? { create: tagConnections } : undefined,
     },
     include: {
-      danceMove: true,
       tags: { include: { tag: true } },
       video: true,
     },
@@ -217,14 +301,13 @@ router.post('/:videoId/clips', auth, async (req: AuthRequest, res) => {
   res.status(201).json(clip)
 })
 
-// Delete video (and all its clips)
+// Delete video (only owner can delete)
 router.delete('/:id', auth, async (req: AuthRequest, res) => {
   const video = await prisma.video.findFirst({
-    where: { id: req.params.id },
-    include: { collection: true },
+    where: { id: req.params.id, ownerId: req.user!.id },
   })
 
-  if (!video || video.collection.userId !== req.user!.id) {
+  if (!video) {
     return res.status(404).json({ error: 'video_not_found' })
   }
 
@@ -245,4 +328,3 @@ router.delete('/:id', auth, async (req: AuthRequest, res) => {
 })
 
 export default router
-

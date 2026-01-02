@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
+import Icon from '@/components/Icons.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -26,22 +27,40 @@ function logout() {
         <!-- Main nav links -->
         <div class="flex items-center gap-1">
           <RouterLink 
+            to="/feed" 
+            class="px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+            :class="$route.path === '/feed'
+              ? 'bg-brand-600/20 text-brand-400'
+              : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-bg-tertiary)]'"
+          >
+            <Icon name="shuffle" :size="16" /> Feed
+          </RouterLink>
+          <RouterLink 
             to="/tags" 
             class="px-3 py-2 rounded-lg text-sm font-medium transition-colors"
             :class="$route.path.startsWith('/tags') || $route.path.startsWith('/clips')
               ? 'bg-brand-600/20 text-brand-400'
               : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-bg-tertiary)]'"
           >
-            🏷️ Tags
+            <Icon name="tag" :size="16" /> Tags
           </RouterLink>
           <RouterLink 
             to="/dashboard" 
             class="px-3 py-2 rounded-lg text-sm font-medium transition-colors"
-            :class="$route.path.startsWith('/dashboard') || $route.path.startsWith('/collections') || $route.path.startsWith('/videos')
+            :class="$route.path.startsWith('/dashboard') || $route.path.startsWith('/collections')
               ? 'bg-brand-600/20 text-brand-400'
               : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-bg-tertiary)]'"
           >
-            📁 Collecties
+            <Icon name="folder" :size="16" /> Collecties
+          </RouterLink>
+          <RouterLink 
+            to="/videos" 
+            class="px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+            :class="$route.path === '/videos' || ($route.path.startsWith('/videos/') && !$route.path.includes('/collections'))
+              ? 'bg-brand-600/20 text-brand-400'
+              : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-bg-tertiary)]'"
+          >
+            <Icon name="video" :size="16" /> Video's
           </RouterLink>
         </div>
       </div>
