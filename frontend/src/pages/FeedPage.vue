@@ -45,6 +45,12 @@ let hideControlsTimeout: ReturnType<typeof setTimeout> | null = null
 const currentClip = computed(() => clips.value[currentIndex.value])
 const isCurrentBuffering = computed(() => isBuffering.value[currentIndex.value] ?? false)
 
+// Only load videos near current index to save bandwidth
+function shouldLoadVideo(index: number): boolean {
+  const current = currentIndex.value
+  return index >= current - 1 && index <= current + 1
+}
+
 async function loadClips() {
   loading.value = true
   try {
@@ -54,12 +60,8 @@ async function loadClips() {
     console.error('Failed to load clips:', e)
   } finally {
     loading.value = false
-    
-    // Auto-play first clip after loading
     if (clips.value.length > 0) {
-      nextTick(() => {
-        playCurrentClip()
-      })
+      nextTick(() => playCurrentClip())
     }
   }
 }
@@ -74,6 +76,8 @@ function shuffleArray<T>(array: T[]): T[] {
 }
 
 function goToClip(index: number) {
+  const oldIndex = currentIndex.value
+  
   // Wrap around for infinite loop
   if (index < 0) {
     currentIndex.value = clips.value.length - 1
@@ -83,11 +87,14 @@ function goToClip(index: number) {
     currentIndex.value = index
   }
   
-  translateY.value = 0
+  // Stop the old video
+  const oldVideo = videoRefs.value[oldIndex]
+  if (oldVideo) {
+    oldVideo.pause()
+  }
   
-  nextTick(() => {
-    playCurrentClip()
-  })
+  translateY.value = 0
+  nextTick(() => playCurrentClip())
 }
 
 async function playCurrentClip() {
@@ -105,11 +112,8 @@ async function playCurrentClip() {
   const clip = clips.value[index]
   
   if (!currentVideo || !clip) {
-    // Video element not ready yet, retry after a short delay
     setTimeout(() => {
-      if (currentIndex.value === index) {
-        playCurrentClip()
-      }
+      if (currentIndex.value === index) playCurrentClip()
     }, 100)
     return
   }
@@ -121,9 +125,8 @@ async function playCurrentClip() {
   // Set the start time
   currentVideo.currentTime = clip.startTime
   
-  // Immediately try to play - the 'playing' event will clear buffering
+  // Try to play
   currentVideo.play().catch(() => {
-    // Retry play after a short delay
     setTimeout(() => {
       if (currentIndex.value === index && currentVideo.paused) {
         currentVideo.play().catch(() => {})
@@ -135,8 +138,13 @@ async function playCurrentClip() {
 }
 
 function onTimeUpdate(video: HTMLVideoElement, clip: Clip, index: number) {
-  // Only handle for current clip
   if (index !== currentIndex.value) return
+  
+  // timeupdate means frames are actually playing - hide spinner
+  if (isBuffering.value[index]) {
+    isBuffering.value[index] = false
+    isActuallyPlaying.value[index] = true
+  }
   
   if (video.currentTime >= clip.endTime) {
     video.currentTime = clip.startTime
@@ -146,6 +154,7 @@ function onTimeUpdate(video: HTMLVideoElement, clip: Clip, index: number) {
 function onVideoWaiting(index: number) {
   if (index === currentIndex.value) {
     isBuffering.value[index] = true
+    isActuallyPlaying.value[index] = false
   }
 }
 
@@ -172,6 +181,7 @@ function onVideoPause(index: number) {
 function onVideoStalled(index: number) {
   if (index === currentIndex.value) {
     isBuffering.value[index] = true
+    isActuallyPlaying.value[index] = false
   }
 }
 
@@ -347,12 +357,11 @@ onUnmounted(() => {
       >
         <video
           :ref="(el) => setVideoRef(el, index)"
-          :src="clip.video.videoUrl"
+          :src="shouldLoadVideo(index) ? clip.video.videoUrl : undefined"
           class="max-h-full max-w-full object-contain"
           playsinline
           :muted="isMuted"
-          autoplay
-          preload="auto"
+          :preload="index === currentIndex || index === currentIndex + 1 ? 'auto' : 'none'"
           @timeupdate="onTimeUpdate($event.target as HTMLVideoElement, clip, index)"
           @waiting="onVideoWaiting(index)"
           @playing="onVideoPlaying(index)"
@@ -367,14 +376,22 @@ onUnmounted(() => {
         <transition name="fade">
           <div 
             v-if="isBuffering[index] && index === currentIndex"
-            class="absolute inset-0 flex items-center justify-center z-30"
-            @click="togglePlayPause"
+            class="absolute inset-0 z-30"
           >
-            <div class="text-center">
-              <div class="w-16 h-16 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center mx-auto mb-3">
-                <div class="animate-spin w-10 h-10 border-4 border-white/30 border-t-white rounded-full"></div>
+            <!-- Back button during loading -->
+            <div class="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/60 to-transparent">
+              <button @click.stop="router.back()" class="p-2 -m-2">
+                <Icon name="arrow-left" :size="24" />
+              </button>
+            </div>
+            <!-- Spinner centered -->
+            <div class="absolute inset-0 flex items-center justify-center">
+              <div class="text-center">
+                <div class="w-16 h-16 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center mx-auto mb-3">
+                  <div class="animate-spin w-10 h-10 border-4 border-white/30 border-t-white rounded-full"></div>
+                </div>
+                <p class="text-sm text-white/70">Laden...</p>
               </div>
-              <p class="text-sm text-white/70">Laden...</p>
             </div>
           </div>
         </transition>
@@ -470,6 +487,7 @@ onUnmounted(() => {
       <Icon name="chevron-right" :size="24" class="rotate-90 text-white/60" />
       <p class="text-xs text-white/60 mt-1">Swipe omhoog</p>
     </div>
+
   </div>
 </template>
 
