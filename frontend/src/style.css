@@ -6,6 +6,7 @@
   --color-bg: #0a0a0f;
   --color-surface: #12121a;
   --color-surface-hover: #1a1a25;
+  --color-modal-bg: #1e1e2a;
   --color-border: #2a2a3a;
   --color-text: #f0f0f5;
   --color-text-muted: #8888aa;
@@ -64,6 +65,11 @@ body::before {
 
   .card {
     @apply bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl;
+  }
+
+  .modal-card {
+    @apply bg-[var(--color-modal-bg)] border border-[var(--color-border)] rounded-xl shadow-2xl;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1);
   }
 
   .input {

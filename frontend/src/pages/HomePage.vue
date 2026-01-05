@@ -17,7 +17,7 @@ const auth = useAuthStore()
       </div>
 
       <div v-if="auth.isLoggedIn">
-        <RouterLink to="/tags" class="btn btn-primary">Mijn Tags</RouterLink>
+        <RouterLink to="/dashboard" class="btn btn-primary">Mijn Collecties</RouterLink>
       </div>
     </nav>
 

@@ -40,18 +40,29 @@ const isFullscreen = ref(false)
 const isIOSMobile = ref(false)
 const isMuted = ref(true) // Start muted for autoplay
 
-// Copy/Share modal state
+// Copy/Move/Share modal state
 const showCopyModal = ref(false)
+const showMoveModal = ref(false)
 const showShareModal = ref(false)
+const showEditModal = ref(false)
+const showDeleteModal = ref(false)
 const collections = ref<Collection[]>([])
 const selectedCollectionId = ref<string | null>(null)
 const shareEmail = ref('')
-const shareCollectionId = ref<string | null>(null)
 const isCopying = ref(false)
+const isMoving = ref(false)
 const isSharing = ref(false)
+const isEditing = ref(false)
+const isDeleting = ref(false)
 const copySuccess = ref(false)
+const moveSuccess = ref(false)
 const shareSuccess = ref(false)
 const shareError = ref('')
+
+// Edit form
+const editTitle = ref('')
+const editTags = ref<string[]>([])
+const editTagInput = ref('')
 
 let hideControlsTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -287,24 +298,49 @@ async function copyClip() {
   }
 }
 
+// Move clip to another collection
+async function openMoveModal() {
+  await loadCollections()
+  selectedCollectionId.value = null
+  moveSuccess.value = false
+  showMoveModal.value = true
+}
+
+async function moveClip() {
+  if (!clip.value || !selectedCollectionId.value) return
+  isMoving.value = true
+  try {
+    await api.post(`/api/clips/${clip.value.id}/move`, {
+      targetCollectionId: selectedCollectionId.value,
+    })
+    moveSuccess.value = true
+    setTimeout(() => {
+      showMoveModal.value = false
+      // Reload clip to get updated collection
+      loadClip()
+    }, 1500)
+  } catch (e) {
+    console.error('Move failed:', e)
+  } finally {
+    isMoving.value = false
+  }
+}
+
 // Share clip with another user
 async function openShareModal() {
-  await loadCollections()
   shareEmail.value = ''
-  shareCollectionId.value = null
   shareSuccess.value = false
   shareError.value = ''
   showShareModal.value = true
 }
 
 async function shareClip() {
-  if (!clip.value || !shareEmail.value || !shareCollectionId.value) return
+  if (!clip.value || !shareEmail.value) return
   isSharing.value = true
   shareError.value = ''
   try {
     await api.post(`/api/clips/${clip.value.id}/share`, {
       targetUserEmail: shareEmail.value,
-      targetCollectionId: shareCollectionId.value,
     })
     shareSuccess.value = true
     setTimeout(() => {
@@ -313,8 +349,6 @@ async function shareClip() {
   } catch (e: any) {
     if (e.message?.includes('user_not_found')) {
       shareError.value = 'Gebruiker niet gevonden'
-    } else if (e.message?.includes('target_collection_not_found')) {
-      shareError.value = 'Collectie niet gevonden'
     } else {
       shareError.value = 'Delen mislukt'
     }
@@ -323,9 +357,63 @@ async function shareClip() {
   }
 }
 
+function openEditModal() {
+  if (!clip.value) return
+  editTitle.value = clip.value.title
+  editTags.value = clip.value.tags.map(ct => ct.tag.name)
+  showEditModal.value = true
+}
+
+function addEditTag() {
+  const tag = editTagInput.value.trim().toLowerCase()
+  if (tag && !editTags.value.includes(tag)) {
+    editTags.value.push(tag)
+  }
+  editTagInput.value = ''
+}
+
+function removeEditTag(tag: string) {
+  editTags.value = editTags.value.filter(t => t !== tag)
+}
+
+async function saveEdit() {
+  if (!clip.value || !editTitle.value.trim()) return
+  isEditing.value = true
+  try {
+    await api.put(`/api/clips/${clip.value.id}`, {
+      title: editTitle.value.trim(),
+      tags: editTags.value,
+    })
+    clip.value.title = editTitle.value.trim()
+    clip.value.tags = editTags.value.map(name => ({ tag: { id: name, name } }))
+    showEditModal.value = false
+  } catch (e) {
+    console.error('Failed to update clip:', e)
+  } finally {
+    isEditing.value = false
+  }
+}
+
+function openDeleteModal() {
+  showDeleteModal.value = true
+}
+
+async function deleteClip() {
+  if (!clip.value) return
+  isDeleting.value = true
+  try {
+    await api.delete(`/api/clips/${clip.value.id}`)
+    router.push(`/collections/${clip.value.collection.id}`)
+  } catch (e) {
+    console.error('Failed to delete clip:', e)
+  } finally {
+    isDeleting.value = false
+  }
+}
+
 function handleKeydown(e: KeyboardEvent) {
   if (!videoRef.value || !clip.value) return
-  if (showCopyModal.value || showShareModal.value) return
+  if (showCopyModal.value || showMoveModal.value || showShareModal.value || showEditModal.value || showDeleteModal.value) return
   
   switch (e.key) {
     case ' ':
@@ -447,12 +535,21 @@ onUnmounted(() => {
             </div>
             
             <!-- Actions -->
-            <div class="flex gap-2">
+            <div class="flex gap-1">
+              <button @click="openEditModal" class="text-white p-2 hover:bg-white/20 rounded" title="Bewerken">
+                <Icon name="edit" :size="20" />
+              </button>
               <button @click="openCopyModal" class="text-white p-2 hover:bg-white/20 rounded" title="Kopiëren">
                 <Icon name="copy" :size="20" />
               </button>
+              <button @click="openMoveModal" class="text-white p-2 hover:bg-white/20 rounded" title="Verplaatsen">
+                <Icon name="folder" :size="20" />
+              </button>
               <button @click="openShareModal" class="text-white p-2 hover:bg-white/20 rounded" title="Delen">
                 <Icon name="share" :size="20" />
+              </button>
+              <button @click="openDeleteModal" class="text-white p-2 hover:bg-white/20 rounded" title="Verwijderen">
+                <Icon name="trash" :size="20" />
               </button>
             </div>
           </div>
@@ -518,8 +615,8 @@ onUnmounted(() => {
 
     <!-- Copy Modal -->
     <Teleport to="body">
-      <div v-if="showCopyModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" @click.self="showCopyModal = false">
-        <div class="bg-[var(--color-surface)] rounded-xl p-6 w-full max-w-sm space-y-4">
+      <div v-if="showCopyModal" class="fixed inset-0 bg-black/70 z-50 overflow-auto" @click.self="showCopyModal = false">
+        <div class="modal-card p-4 sm:p-6 space-y-4 mt-16 mx-4 sm:mx-auto sm:max-w-md">
           <h2 class="text-xl font-semibold text-white">Clip kopiëren</h2>
           
           <div v-if="copySuccess" class="text-center py-4">
@@ -530,17 +627,19 @@ onUnmounted(() => {
           <template v-else>
             <p class="text-[var(--color-text-muted)]">Kies een collectie om de clip naar te kopiëren:</p>
             
-            <div class="space-y-2 max-h-48 overflow-y-auto">
-              <button
-                v-for="col in collections.filter(c => c.id !== clip?.collection.id)"
-                :key="col.id"
-                @click="selectedCollectionId = col.id"
-                class="w-full p-3 rounded-lg text-left transition-colors"
-                :class="selectedCollectionId === col.id ? 'bg-brand-500/20 border border-brand-500' : 'bg-white/5 hover:bg-white/10'"
+            <select 
+              v-model="selectedCollectionId" 
+              class="input w-full"
+            >
+              <option :value="null" disabled>Selecteer collectie...</option>
+              <option 
+                v-for="col in collections.filter(c => c.id !== clip?.collection.id)" 
+                :key="col.id" 
+                :value="col.id"
               >
                 {{ col.name }}
-              </button>
-            </div>
+              </option>
+            </select>
             
             <div class="flex gap-3">
               <button @click="showCopyModal = false" class="btn btn-secondary flex-1">Annuleren</button>
@@ -553,10 +652,49 @@ onUnmounted(() => {
       </div>
     </Teleport>
 
+    <!-- Move Modal -->
+    <Teleport to="body">
+      <div v-if="showMoveModal" class="fixed inset-0 bg-black/70 z-50 overflow-auto" @click.self="showMoveModal = false">
+        <div class="modal-card p-4 sm:p-6 space-y-4 mt-16 mx-4 sm:mx-auto sm:max-w-md">
+          <h2 class="text-xl font-semibold text-white">Clip verplaatsen</h2>
+          
+          <div v-if="moveSuccess" class="text-center py-4">
+            <Icon name="check" :size="48" class="mx-auto mb-2 text-green-400" />
+            <p class="text-green-400">Verplaatst!</p>
+          </div>
+          
+          <template v-else>
+            <p class="text-[var(--color-text-muted)]">Kies een collectie om de clip naar te verplaatsen:</p>
+            
+            <select 
+              v-model="selectedCollectionId" 
+              class="input w-full"
+            >
+              <option :value="null" disabled>Selecteer collectie...</option>
+              <option 
+                v-for="col in collections.filter(c => c.id !== clip?.collection.id)" 
+                :key="col.id" 
+                :value="col.id"
+              >
+                {{ col.name }}
+              </option>
+            </select>
+            
+            <div class="flex gap-3">
+              <button @click="showMoveModal = false" class="btn btn-secondary flex-1">Annuleren</button>
+              <button @click="moveClip" class="btn btn-primary flex-1" :disabled="!selectedCollectionId || isMoving">
+                {{ isMoving ? 'Verplaatsen...' : 'Verplaatsen' }}
+              </button>
+            </div>
+          </template>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- Share Modal -->
     <Teleport to="body">
-      <div v-if="showShareModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" @click.self="showShareModal = false">
-        <div class="bg-[var(--color-surface)] rounded-xl p-6 w-full max-w-sm space-y-4">
+      <div v-if="showShareModal" class="fixed inset-0 bg-black/70 z-50 overflow-auto" @click.self="showShareModal = false">
+        <div class="modal-card p-4 sm:p-6 space-y-4 mt-16 mx-4 sm:mx-auto sm:max-w-md">
           <h2 class="text-xl font-semibold text-white">Clip delen</h2>
           
           <div v-if="shareSuccess" class="text-center py-4">
@@ -565,36 +703,88 @@ onUnmounted(() => {
           </div>
           
           <template v-else>
-            <p class="text-[var(--color-text-muted)]">Deel deze clip met een andere gebruiker:</p>
+            <p class="text-[var(--color-text-muted)]">Deel deze clip met een andere gebruiker. De clip wordt toegevoegd aan hun Inbox.</p>
             
-            <div class="space-y-3">
-              <input
-                v-model="shareEmail"
-                type="email"
-                placeholder="E-mail van ontvanger"
-                class="input w-full"
-              />
-              
-              <div>
-                <label class="text-sm text-[var(--color-text-muted)] mb-1 block">Naar welke collectie van die gebruiker?</label>
-                <input
-                  v-model="shareCollectionId"
-                  type="text"
-                  placeholder="Collectie ID (vraag aan ontvanger)"
-                  class="input w-full"
-                />
-              </div>
-            </div>
+            <input
+              v-model="shareEmail"
+              type="email"
+              placeholder="E-mail van ontvanger"
+              class="input w-full"
+            />
             
             <p v-if="shareError" class="text-red-400 text-sm">{{ shareError }}</p>
             
             <div class="flex gap-3">
               <button @click="showShareModal = false" class="btn btn-secondary flex-1">Annuleren</button>
-              <button @click="shareClip" class="btn btn-primary flex-1" :disabled="!shareEmail || !shareCollectionId || isSharing">
+              <button @click="shareClip" class="btn btn-primary flex-1" :disabled="!shareEmail || isSharing">
                 {{ isSharing ? 'Delen...' : 'Delen' }}
               </button>
             </div>
           </template>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Edit Modal -->
+    <Teleport to="body">
+      <div v-if="showEditModal" class="fixed inset-0 bg-black/70 z-50 overflow-auto" @click.self="showEditModal = false">
+        <div class="modal-card p-4 sm:p-6 space-y-4 mt-16 mx-4 sm:mx-auto sm:max-w-md">
+          <h2 class="text-xl font-semibold text-white">Clip bewerken</h2>
+          
+          <div>
+            <label class="block text-sm text-[var(--color-text-muted)] mb-1">Titel</label>
+            <input v-model="editTitle" class="input w-full" placeholder="Clip titel" />
+          </div>
+          
+          <div>
+            <label class="block text-sm text-[var(--color-text-muted)] mb-1">Tags</label>
+            <div class="flex gap-2 mb-2">
+              <input
+                v-model="editTagInput"
+                @keydown.enter.prevent="addEditTag"
+                class="input flex-1"
+                placeholder="Voeg tag toe..."
+              />
+              <button @click="addEditTag" class="btn btn-secondary px-3">+</button>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <span 
+                v-for="tag in editTags" 
+                :key="tag" 
+                class="bg-brand-500/20 text-brand-400 px-2 py-1 rounded-full text-sm flex items-center gap-1"
+              >
+                {{ tag }}
+                <button @click="removeEditTag(tag)" class="hover:text-white">&times;</button>
+              </span>
+            </div>
+          </div>
+          
+          <div class="flex gap-3 pt-2">
+            <button @click="showEditModal = false" class="btn btn-secondary flex-1">Annuleren</button>
+            <button @click="saveEdit" class="btn btn-primary flex-1" :disabled="!editTitle.trim() || isEditing">
+              {{ isEditing ? 'Opslaan...' : 'Opslaan' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Delete Modal -->
+    <Teleport to="body">
+      <div v-if="showDeleteModal" class="fixed inset-0 bg-black/70 z-50 overflow-auto" @click.self="showDeleteModal = false">
+        <div class="modal-card p-4 sm:p-6 space-y-4 mt-16 mx-4 sm:mx-auto sm:max-w-md">
+          <h2 class="text-xl font-semibold text-white">Clip verwijderen</h2>
+          
+          <p class="text-[var(--color-text-muted)]">
+            Weet je zeker dat je <strong class="text-white">{{ clip?.title }}</strong> wilt verwijderen? Dit kan niet ongedaan worden gemaakt.
+          </p>
+          
+          <div class="flex gap-3 pt-2">
+            <button @click="showDeleteModal = false" class="btn btn-secondary flex-1">Annuleren</button>
+            <button @click="deleteClip" class="btn bg-red-600 hover:bg-red-700 text-white flex-1" :disabled="isDeleting">
+              {{ isDeleting ? 'Verwijderen...' : 'Verwijderen' }}
+            </button>
+          </div>
         </div>
       </div>
     </Teleport>

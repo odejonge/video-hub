@@ -42,8 +42,37 @@ const translateY = ref(0)
 const showControls = ref(true)
 let hideControlsTimeout: ReturnType<typeof setTimeout> | null = null
 
+// Playback controls
+const playbackRate = ref(1)
+const currentTime = ref(0)
+const clipDuration = ref(0)
+const isScrubbing = ref(false)
+const wasPlayingBeforeScrub = ref(false)
+const userPaused = ref(false)
+
 const currentClip = computed(() => clips.value[currentIndex.value])
 const isCurrentBuffering = computed(() => isBuffering.value[currentIndex.value] ?? false)
+
+// Progress computed based on clip start/end times
+const progress = computed(() => {
+  const clip = currentClip.value
+  if (!clip || clipDuration.value === 0) return 0
+  const clipProgress = currentTime.value - clip.startTime
+  const duration = clip.endTime - clip.startTime
+  return Math.max(0, Math.min(100, (clipProgress / duration) * 100))
+})
+
+const clipCurrentTimeDisplay = computed(() => {
+  const clip = currentClip.value
+  if (!clip) return 0
+  return Math.max(0, currentTime.value - clip.startTime)
+})
+
+const clipDurationDisplay = computed(() => {
+  const clip = currentClip.value
+  if (!clip) return 0
+  return clip.endTime - clip.startTime
+})
 
 // Only load videos near current index to save bandwidth
 function shouldLoadVideo(index: number): boolean {
@@ -93,6 +122,9 @@ function goToClip(index: number) {
     oldVideo.pause()
   }
   
+  // Reset user paused state for new clip
+  userPaused.value = false
+  
   translateY.value = 0
   nextTick(() => playCurrentClip())
 }
@@ -122,8 +154,10 @@ async function playCurrentClip() {
   isBuffering.value[index] = true
   isActuallyPlaying.value[index] = false
   
-  // Set the start time
+  // Set the start time and playback rate
   currentVideo.currentTime = clip.startTime
+  currentVideo.playbackRate = playbackRate.value
+  currentTime.value = clip.startTime
   
   // Try to play
   currentVideo.play().catch(() => {
@@ -139,6 +173,12 @@ async function playCurrentClip() {
 
 function onTimeUpdate(video: HTMLVideoElement, clip: Clip, index: number) {
   if (index !== currentIndex.value) return
+  
+  // Update current time for progress bar (only if not scrubbing)
+  if (!isScrubbing.value) {
+    currentTime.value = video.currentTime
+  }
+  clipDuration.value = video.duration
   
   // timeupdate means frames are actually playing - hide spinner
   if (isBuffering.value[index]) {
@@ -164,6 +204,9 @@ function onVideoPlaying(index: number) {
 }
 
 function onVideoCanPlay(index: number) {
+  // Don't auto-play while scrubbing or if user explicitly paused
+  if (isScrubbing.value || userPaused.value) return
+  
   const video = videoRefs.value[index]
   if (index === currentIndex.value && video && video.paused) {
     video.play().catch(() => {})
@@ -242,7 +285,7 @@ function onKeydown(e: KeyboardEvent) {
       goToClip(currentIndex.value - 1)
       break
     case 'Escape':
-      router.back()
+      router.push('/dashboard')
       break
   }
 }
@@ -254,10 +297,12 @@ function togglePlayPause() {
   if (!video || !clip) return
   
   if (video.paused) {
+    userPaused.value = false
     isBuffering.value[index] = true
     video.play().catch(() => {})
     resetHideControlsTimer()
   } else {
+    userPaused.value = true
     video.pause()
     showControls.value = true
     if (hideControlsTimeout) clearTimeout(hideControlsTimeout)
@@ -272,6 +317,78 @@ function toggleMute() {
       video.muted = isMuted.value
     }
   })
+}
+
+function formatTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+function setPlaybackRate(rate: number) {
+  playbackRate.value = rate
+  const video = videoRefs.value[currentIndex.value]
+  if (video) {
+    video.playbackRate = rate
+  }
+}
+
+let scrubBarRect: DOMRect | null = null
+
+function startScrub(e: MouseEvent | TouchEvent) {
+  const target = e.currentTarget as HTMLElement
+  if (target) {
+    scrubBarRect = target.getBoundingClientRect()
+  }
+  
+  const video = videoRefs.value[currentIndex.value]
+  if (video) {
+    wasPlayingBeforeScrub.value = !video.paused
+    if (!video.paused) {
+      video.pause()
+    }
+  }
+  
+  isScrubbing.value = true
+  scrub(e)
+  
+  // Add global listeners
+  document.addEventListener('mousemove', scrub)
+  document.addEventListener('mouseup', endScrub)
+}
+
+function scrub(e: MouseEvent | TouchEvent) {
+  if (!scrubBarRect || !currentClip.value) return
+  
+  const clientX = 'touches' in e ? e.touches[0]?.clientX ?? 0 : e.clientX
+  const percent = Math.max(0, Math.min(1, (clientX - scrubBarRect.left) / scrubBarRect.width))
+  
+  const clip = currentClip.value
+  const clipLength = clip.endTime - clip.startTime
+  const newTime = clip.startTime + (percent * clipLength)
+  
+  const video = videoRefs.value[currentIndex.value]
+  if (video) {
+    video.currentTime = newTime
+    currentTime.value = newTime
+  }
+}
+
+function endScrub() {
+  isScrubbing.value = false
+  scrubBarRect = null
+  document.removeEventListener('mousemove', scrub)
+  document.removeEventListener('mouseup', endScrub)
+  
+  // Only resume if video was playing before scrub
+  if (wasPlayingBeforeScrub.value) {
+    const video = videoRefs.value[currentIndex.value]
+    if (video) {
+      video.play().catch(() => {})
+    }
+  }
+  
+  resetHideControlsTimer()
 }
 
 function toggleControls() {
@@ -380,7 +497,7 @@ onUnmounted(() => {
           >
             <!-- Back button during loading -->
             <div class="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/60 to-transparent">
-              <button @click.stop="router.back()" class="p-2 -m-2">
+              <button @click.stop="router.push('/dashboard')" class="p-2 -m-2">
                 <Icon name="arrow-left" :size="24" />
               </button>
             </div>
@@ -409,54 +526,77 @@ onUnmounted(() => {
             v-if="showControls && index === currentIndex"
             class="absolute inset-0 pointer-events-none z-20"
           >
-            <!-- Top gradient & back button -->
-            <div class="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/60 to-transparent pointer-events-auto">
-              <button @click="router.back()" class="p-2 -m-2">
-                <Icon name="arrow-left" :size="24" />
-              </button>
+            <!-- Top bar with back button and clip info -->
+            <div class="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent pointer-events-auto">
+              <div class="flex items-center gap-4">
+                <button @click="router.push('/dashboard')" class="text-white p-2 -m-2">
+                  <Icon name="arrow-left" :size="24" />
+                </button>
+                <div class="flex-1 min-w-0">
+                  <h1 class="text-white font-semibold truncate">{{ clip.title }}</h1>
+                  <div class="flex items-center gap-2 text-white/70 text-sm">
+                    <span class="truncate">{{ clip.collection.name }}</span>
+                    <span v-for="ct in clip.tags.slice(0, 3)" :key="ct.tag.id" class="bg-white/20 px-2 py-0.5 rounded-full text-xs">
+                      {{ ct.tag.name }}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <!-- Center play button (only show when paused and not buffering) -->
-            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <button 
-                v-if="videoRefs[index]?.paused && !isBuffering[index]"
-                class="w-20 h-20 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center pointer-events-auto"
-                @click.stop="togglePlayPause"
-              >
-                <Icon name="play" :size="40" />
-              </button>
-            </div>
 
-            <!-- Bottom info -->
+            <!-- Bottom controls -->
             <div class="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent pointer-events-auto">
-              <div class="max-w-lg">
-                <h2 class="font-semibold text-lg mb-1">{{ clip.title }}</h2>
-                <p class="text-sm text-white/70 mb-2">{{ clip.collection.name }}</p>
-                <div class="flex flex-wrap gap-2">
-                  <span 
-                    v-for="ct in clip.tags" 
-                    :key="ct.tag.id"
-                    class="text-xs bg-white/20 px-2 py-1 rounded-full"
-                  >
-                    #{{ ct.tag.name }}
-                  </span>
+              <!-- Progress bar -->
+              <div 
+                @mousedown.stop="startScrub"
+                @touchstart.stop.prevent="startScrub"
+                @touchmove.stop.prevent="scrub"
+                @touchend.stop.prevent="endScrub"
+                class="py-3 -my-3 cursor-pointer select-none"
+              >
+                <div class="h-1 bg-white/30 rounded-full relative">
+                  <div class="h-full bg-brand-500 rounded-full" :style="{ width: `${progress}%` }" />
+                  <div 
+                    class="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg transition-transform"
+                    :class="isScrubbing ? 'scale-125' : ''"
+                    :style="{ left: `calc(${progress}% - 8px)` }"
+                  />
                 </div>
               </div>
 
-              <!-- Action buttons -->
-              <div class="absolute right-4 bottom-20 flex flex-col gap-4 items-center">
-                <button 
-                  @click.stop="toggleMute"
-                  class="w-12 h-12 rounded-full bg-white/10 backdrop-blur flex items-center justify-center hover:bg-white/20 transition-colors"
-                >
-                  <Icon :name="isMuted ? 'volume-off' : 'volume-on'" :size="24" />
-                </button>
-                <button 
-                  @click.stop="goToClipDetail(clip)"
-                  class="w-12 h-12 rounded-full bg-white/10 backdrop-blur flex items-center justify-center hover:bg-white/20 transition-colors"
-                >
-                  <Icon name="expand" :size="24" />
-                </button>
+              <!-- Controls row -->
+              <div class="flex items-center justify-between text-white mt-3">
+                <div class="flex items-center gap-3">
+                  <button @click.stop="togglePlayPause" class="p-1">
+                    <Icon :name="videoRefs[index]?.paused ? 'play' : 'pause'" :size="32" />
+                  </button>
+                  <div class="text-sm">
+                    {{ formatTime(clipCurrentTimeDisplay) }} / {{ formatTime(clipDurationDisplay) }}
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <div class="flex items-center gap-1">
+                    <button 
+                      v-for="rate in [0.25, 0.5, 1, 1.5, 2]"
+                      :key="rate"
+                      @click.stop="setPlaybackRate(rate)"
+                      class="px-2 py-1 rounded text-xs transition-colors"
+                      :class="playbackRate === rate ? 'bg-brand-500' : 'bg-white/20 hover:bg-white/30'"
+                    >
+                      {{ rate }}x
+                    </button>
+                  </div>
+                  
+                  <button @click.stop="toggleMute" class="p-2 ml-2">
+                    <Icon :name="isMuted ? 'volume-off' : 'volume-on'" :size="24" />
+                  </button>
+                  
+                  <button @click.stop="goToClipDetail(clip)" class="p-2">
+                    <Icon name="expand" :size="24" />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -484,7 +624,7 @@ onUnmounted(() => {
       v-if="!loading && clips.length > 1 && currentIndex === 0"
       class="absolute bottom-32 left-1/2 -translate-x-1/2 text-center animate-bounce pointer-events-none"
     >
-      <Icon name="chevron-right" :size="24" class="rotate-90 text-white/60" />
+      <Icon name="chevron-right" :size="24" class="-rotate-90 text-white/60" />
       <p class="text-xs text-white/60 mt-1">Swipe omhoog</p>
     </div>
 

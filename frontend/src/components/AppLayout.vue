@@ -17,7 +17,7 @@ function logout() {
     <!-- Nav -->
     <nav class="px-4 md:px-6 py-4 flex items-center justify-between border-b border-[var(--color-border)]">
       <div class="flex items-center gap-6">
-        <RouterLink to="/tags" class="flex items-center gap-2">
+        <RouterLink to="/dashboard" class="flex items-center gap-2">
           <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center">
             <span class="text-white font-bold text-sm">D</span>
           </div>
@@ -36,18 +36,9 @@ function logout() {
             <Icon name="shuffle" :size="16" /> Feed
           </RouterLink>
           <RouterLink 
-            to="/tags" 
-            class="px-3 py-2 rounded-lg text-sm font-medium transition-colors"
-            :class="$route.path.startsWith('/tags') || $route.path.startsWith('/clips')
-              ? 'bg-brand-600/20 text-brand-400'
-              : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-bg-tertiary)]'"
-          >
-            <Icon name="tag" :size="16" /> Tags
-          </RouterLink>
-          <RouterLink 
             to="/dashboard" 
             class="px-3 py-2 rounded-lg text-sm font-medium transition-colors"
-            :class="$route.path.startsWith('/dashboard') || $route.path.startsWith('/collections')
+            :class="$route.path.startsWith('/dashboard') || $route.path.startsWith('/collections') || $route.path.startsWith('/clips')
               ? 'bg-brand-600/20 text-brand-400'
               : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-bg-tertiary)]'"
           >

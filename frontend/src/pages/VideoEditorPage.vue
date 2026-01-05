@@ -233,15 +233,32 @@ function cancelCreatingClip() {
 }
 
 function setClipStart() {
-  newClipStart.value = currentTime.value
+  const time = currentTime.value
+  // If end is already set and new start is after end, swap them
+  if (newClipEnd.value !== null && time > newClipEnd.value) {
+    newClipStart.value = newClipEnd.value
+    newClipEnd.value = time
+  } else {
+    newClipStart.value = time
+  }
 }
 
 function setClipEnd() {
-  newClipEnd.value = currentTime.value
+  const time = currentTime.value
+  // If start is already set and new end is before start, swap them
+  if (newClipStart.value !== null && time < newClipStart.value) {
+    newClipEnd.value = newClipStart.value
+    newClipStart.value = time
+  } else {
+    newClipEnd.value = time
+  }
 }
 
 async function saveClip() {
   if (!video.value || !newClipTitle.value.trim() || newClipStart.value === null || !newClipCollectionId.value) return
+  
+  // Validate end time is after start time (if set)
+  if (newClipEnd.value !== null && newClipEnd.value <= newClipStart.value) return
 
   isSaving.value = true
   try {
@@ -608,7 +625,7 @@ onUnmounted(() => {
                 <button
                   @click="saveClip"
                   class="btn btn-primary flex-1"
-                  :disabled="isSaving || !newClipTitle.trim() || newClipStart === null || !newClipCollectionId"
+                  :disabled="isSaving || !newClipTitle.trim() || newClipStart === null || !newClipCollectionId || (newClipEnd !== null && newClipEnd <= newClipStart)"
                 >
                   {{ isSaving ? 'Opslaan...' : 'Opslaan' }}
                 </button>
@@ -622,7 +639,16 @@ onUnmounted(() => {
 
           <!-- Clips Sidebar -->
           <div class="space-y-3 sm:space-y-4" :class="{ 'hidden lg:block': activeTab === 'video' }">
-            <h2 class="text-lg sm:text-xl font-semibold hidden lg:block">Clips ({{ video.clips.length }})</h2>
+            <div class="flex items-center justify-between hidden lg:flex">
+              <h2 class="text-lg sm:text-xl font-semibold">Clips ({{ video.clips.length }})</h2>
+              <button 
+                @click="startCreatingClip"
+                class="w-8 h-8 rounded-lg bg-brand-500 hover:bg-brand-600 text-white flex items-center justify-center transition-colors"
+                title="Nieuwe clip aanmaken"
+              >
+                <Icon name="plus" :size="18" />
+              </button>
+            </div>
 
             <div v-if="video.clips.length" class="space-y-2">
               <div

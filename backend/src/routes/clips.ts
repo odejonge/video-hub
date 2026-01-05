@@ -165,9 +165,71 @@ router.post('/:id/copy', auth, async (req: AuthRequest, res) => {
   res.status(201).json(result)
 })
 
-// Share clip with another user (copy to their collection)
+// Move clip to another collection (same user)
+router.post('/:id/move', auth, async (req: AuthRequest, res) => {
+  const { targetCollectionId } = req.body
+
+  // Get source clip
+  const clip = await prisma.clip.findFirst({
+    where: { id: req.params.id },
+    include: {
+      collection: true,
+      tags: { include: { tag: true } },
+    },
+  })
+
+  if (!clip || clip.collection.userId !== req.user!.id) {
+    return res.status(404).json({ error: 'clip_not_found' })
+  }
+
+  // Verify target collection ownership
+  const targetCollection = await prisma.collection.findFirst({
+    where: { id: targetCollectionId, userId: req.user!.id },
+  })
+
+  if (!targetCollection) {
+    return res.status(404).json({ error: 'target_collection_not_found' })
+  }
+
+  // Delete old clip tags
+  await prisma.clipTag.deleteMany({ where: { clipId: clip.id } })
+
+  // Update clip's collection
+  await prisma.clip.update({
+    where: { id: clip.id },
+    data: { collectionId: targetCollectionId },
+  })
+
+  // Recreate tags in target collection
+  for (const clipTag of clip.tags) {
+    const tag = await prisma.tag.upsert({
+      where: {
+        collectionId_name: { collectionId: targetCollectionId, name: clipTag.tag.name },
+      },
+      update: {},
+      create: { name: clipTag.tag.name, collectionId: targetCollectionId },
+    })
+
+    await prisma.clipTag.create({
+      data: { clipId: clip.id, tagId: tag.id },
+    })
+  }
+
+  // Return updated clip
+  const result = await prisma.clip.findUnique({
+    where: { id: clip.id },
+    include: {
+      video: true,
+      tags: { include: { tag: true } },
+    },
+  })
+
+  res.json(result)
+})
+
+// Share clip with another user (copy to their Inbox collection)
 router.post('/:id/share', auth, async (req: AuthRequest, res) => {
-  const { targetUserEmail, targetCollectionId } = req.body
+  const { targetUserEmail } = req.body
 
   // Get source clip
   const clip = await prisma.clip.findFirst({
@@ -190,14 +252,22 @@ router.post('/:id/share', auth, async (req: AuthRequest, res) => {
     return res.status(404).json({ error: 'user_not_found' })
   }
 
-  // Verify target collection belongs to target user
-  const targetCollection = await prisma.collection.findFirst({
-    where: { id: targetCollectionId, userId: targetUser.id },
+  // Find or create user's Inbox collection
+  let targetCollection = await prisma.collection.findFirst({
+    where: { userId: targetUser.id, name: 'Inbox' },
   })
 
   if (!targetCollection) {
-    return res.status(404).json({ error: 'target_collection_not_found' })
+    targetCollection = await prisma.collection.create({
+      data: {
+        name: 'Inbox',
+        description: 'Ontvangen clips van andere gebruikers',
+        userId: targetUser.id,
+      },
+    })
   }
+
+  const targetCollectionId = targetCollection.id
 
   // Share the underlying video with target user (if not already shared)
   await prisma.videoAccess.upsert({

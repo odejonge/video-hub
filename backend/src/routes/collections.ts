@@ -221,4 +221,190 @@ router.delete('/:collectionId/tags/:tagId', auth, async (req: AuthRequest, res) 
   res.status(204).send()
 })
 
+// Copy collection (duplicate for current user)
+router.post('/:id/copy', auth, async (req: AuthRequest, res) => {
+  const sourceCollection = await prisma.collection.findFirst({
+    where: {
+      id: req.params.id,
+      OR: [{ userId: req.user!.id }, { isPublic: true }],
+    },
+    include: {
+      tags: true,
+      clips: {
+        include: {
+          video: true,
+          tags: { include: { tag: true } },
+        },
+      },
+    },
+  })
+
+  if (!sourceCollection) {
+    return res.status(404).json({ error: 'collection_not_found' })
+  }
+
+  // Create new collection
+  const newCollection = await prisma.collection.create({
+    data: {
+      name: `${sourceCollection.name} (kopie)`,
+      description: sourceCollection.description,
+      userId: req.user!.id,
+    },
+  })
+
+  // Copy tags
+  const tagMapping = new Map<string, string>()
+  for (const tag of sourceCollection.tags) {
+    const newTag = await prisma.tag.create({
+      data: {
+        name: tag.name,
+        collectionId: newCollection.id,
+      },
+    })
+    tagMapping.set(tag.id, newTag.id)
+  }
+
+  // Copy clips with their tags
+  for (const clip of sourceCollection.clips) {
+    // Ensure user has access to the video
+    const videoAccess = await prisma.videoAccess.findFirst({
+      where: { videoId: clip.video.id, userId: req.user!.id },
+    })
+
+    if (!videoAccess) {
+      // Grant access to the video
+      await prisma.videoAccess.create({
+        data: {
+          videoId: clip.video.id,
+          userId: req.user!.id,
+          canEdit: false,
+        },
+      })
+    }
+
+    const newClip = await prisma.clip.create({
+      data: {
+        title: clip.title,
+        startTime: clip.startTime,
+        endTime: clip.endTime,
+        videoId: clip.video.id,
+        collectionId: newCollection.id,
+      },
+    })
+
+    // Copy clip tags
+    for (const clipTag of clip.tags) {
+      const newTagId = tagMapping.get(clipTag.tag.id)
+      if (newTagId) {
+        await prisma.clipTag.create({
+          data: {
+            clipId: newClip.id,
+            tagId: newTagId,
+          },
+        })
+      }
+    }
+  }
+
+  res.status(201).json({ id: newCollection.id, name: newCollection.name })
+})
+
+// Share collection with another user
+router.post('/:id/share', auth, async (req: AuthRequest, res) => {
+  const { targetUserEmail } = req.body
+
+  const sourceCollection = await prisma.collection.findFirst({
+    where: { id: req.params.id, userId: req.user!.id },
+    include: {
+      tags: true,
+      clips: {
+        include: {
+          video: true,
+          tags: { include: { tag: true } },
+        },
+      },
+    },
+  })
+
+  if (!sourceCollection) {
+    return res.status(404).json({ error: 'collection_not_found' })
+  }
+
+  const targetUser = await prisma.user.findUnique({
+    where: { email: targetUserEmail },
+  })
+
+  if (!targetUser) {
+    return res.status(404).json({ error: 'user_not_found' })
+  }
+
+  if (targetUser.id === req.user!.id) {
+    return res.status(400).json({ error: 'cannot_share_with_self' })
+  }
+
+  // Create collection for target user
+  const newCollection = await prisma.collection.create({
+    data: {
+      name: `${sourceCollection.name} (gedeeld)`,
+      description: sourceCollection.description,
+      userId: targetUser.id,
+    },
+  })
+
+  // Copy tags
+  const tagMapping = new Map<string, string>()
+  for (const tag of sourceCollection.tags) {
+    const newTag = await prisma.tag.create({
+      data: {
+        name: tag.name,
+        collectionId: newCollection.id,
+      },
+    })
+    tagMapping.set(tag.id, newTag.id)
+  }
+
+  // Copy clips with their tags
+  for (const clip of sourceCollection.clips) {
+    // Grant video access to target user
+    const existingAccess = await prisma.videoAccess.findFirst({
+      where: { videoId: clip.video.id, userId: targetUser.id },
+    })
+
+    if (!existingAccess) {
+      await prisma.videoAccess.create({
+        data: {
+          videoId: clip.video.id,
+          userId: targetUser.id,
+          canEdit: false,
+        },
+      })
+    }
+
+    const newClip = await prisma.clip.create({
+      data: {
+        title: clip.title,
+        startTime: clip.startTime,
+        endTime: clip.endTime,
+        videoId: clip.video.id,
+        collectionId: newCollection.id,
+      },
+    })
+
+    // Copy clip tags
+    for (const clipTag of clip.tags) {
+      const newTagId = tagMapping.get(clipTag.tag.id)
+      if (newTagId) {
+        await prisma.clipTag.create({
+          data: {
+            clipId: newClip.id,
+            tagId: newTagId,
+          },
+        })
+      }
+    }
+  }
+
+  res.status(201).json({ id: newCollection.id, sharedWith: targetUser.email })
+})
+
 export default router

@@ -35,6 +35,17 @@ const editingCollection = ref<Collection | null>(null)
 const editName = ref('')
 const editDescription = ref('')
 
+// Copy/Share modals
+const showCopyModal = ref(false)
+const showShareModal = ref(false)
+const actionCollection = ref<Collection | null>(null)
+const shareEmail = ref('')
+const isCopying = ref(false)
+const isSharing = ref(false)
+const copySuccess = ref(false)
+const shareSuccess = ref(false)
+const shareError = ref('')
+
 async function loadCollections() {
   const res = await api.get<Collection[]>('/api/collections')
   collections.value = res.data
@@ -98,6 +109,66 @@ async function deleteCollection(collection: Collection, e: Event) {
   await loadCollections()
 }
 
+function openCopyModal(collection: Collection, e: Event) {
+  e.preventDefault()
+  e.stopPropagation()
+  actionCollection.value = collection
+  copySuccess.value = false
+  showCopyModal.value = true
+}
+
+async function copyCollection() {
+  if (!actionCollection.value) return
+  isCopying.value = true
+  try {
+    await api.post(`/api/collections/${actionCollection.value.id}/copy`)
+    copySuccess.value = true
+    await loadCollections()
+    setTimeout(() => {
+      showCopyModal.value = false
+    }, 1500)
+  } catch (e) {
+    console.error('Failed to copy collection:', e)
+  } finally {
+    isCopying.value = false
+  }
+}
+
+function openShareModal(collection: Collection, e: Event) {
+  e.preventDefault()
+  e.stopPropagation()
+  actionCollection.value = collection
+  shareEmail.value = ''
+  shareError.value = ''
+  shareSuccess.value = false
+  showShareModal.value = true
+}
+
+async function shareCollection() {
+  if (!actionCollection.value || !shareEmail.value) return
+  isSharing.value = true
+  shareError.value = ''
+  try {
+    await api.post(`/api/collections/${actionCollection.value.id}/share`, {
+      targetUserEmail: shareEmail.value,
+    })
+    shareSuccess.value = true
+    setTimeout(() => {
+      showShareModal.value = false
+    }, 1500)
+  } catch (e: any) {
+    if (e.message?.includes('user_not_found')) {
+      shareError.value = 'Gebruiker niet gevonden'
+    } else if (e.message?.includes('cannot_share_with_self')) {
+      shareError.value = 'Je kunt niet met jezelf delen'
+    } else {
+      shareError.value = 'Delen mislukt'
+    }
+  } finally {
+    isSharing.value = false
+  }
+}
+
 onMounted(loadCollections)
 </script>
 
@@ -142,14 +213,28 @@ onMounted(loadCollections)
                 <div class="bg-white/5 px-2 py-1 rounded">{{ collection._count.tags }} tags</div>
               </div>
               
-              <!-- Edit/Delete buttons -->
-              <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <!-- Action buttons -->
+              <div class="flex gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
                   @click.prevent="openEditModal(collection, $event)"
                   class="p-1.5 rounded hover:bg-white/10 text-[var(--color-text-muted)] hover:text-white"
                   title="Bewerken"
                 >
                   <Icon name="edit" :size="16" />
+                </button>
+                <button
+                  @click.prevent="openCopyModal(collection, $event)"
+                  class="p-1.5 rounded hover:bg-white/10 text-[var(--color-text-muted)] hover:text-white"
+                  title="Kopiëren"
+                >
+                  <Icon name="copy" :size="16" />
+                </button>
+                <button
+                  @click.prevent="openShareModal(collection, $event)"
+                  class="p-1.5 rounded hover:bg-white/10 text-[var(--color-text-muted)] hover:text-white"
+                  title="Delen"
+                >
+                  <Icon name="share" :size="16" />
                 </button>
                 <button
                   @click.prevent="deleteCollection(collection, $event)"
@@ -181,8 +266,8 @@ onMounted(loadCollections)
 
     <!-- New Collection Modal -->
     <Teleport to="body">
-      <div v-if="showNewModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" @click.self="showNewModal = false">
-        <div class="card p-6 w-full max-w-lg space-y-4">
+      <div v-if="showNewModal" class="fixed inset-0 bg-black/70 z-50 overflow-auto" @click.self="showNewModal = false">
+        <div class="modal-card p-4 sm:p-6 space-y-4 mt-16 mx-4 sm:mx-auto sm:max-w-lg">
           <h2 class="text-xl font-semibold">Nieuwe collectie</h2>
           
           <div class="space-y-4">
@@ -246,8 +331,8 @@ onMounted(loadCollections)
 
     <!-- Edit Collection Modal -->
     <Teleport to="body">
-      <div v-if="showEditModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" @click.self="showEditModal = false">
-        <div class="card p-6 w-full max-w-md space-y-4">
+      <div v-if="showEditModal" class="fixed inset-0 bg-black/70 z-50 overflow-auto" @click.self="showEditModal = false">
+        <div class="modal-card p-4 sm:p-6 space-y-4 mt-16 mx-4 sm:mx-auto sm:max-w-md">
           <h2 class="text-xl font-semibold">Collectie bewerken</h2>
           
           <div class="space-y-4">
@@ -275,6 +360,72 @@ onMounted(loadCollections)
             <button @click="showEditModal = false" class="btn btn-secondary">Annuleren</button>
             <button @click="saveEdit" class="btn btn-primary" :disabled="!editName.trim()">Opslaan</button>
           </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Copy Modal -->
+    <Teleport to="body">
+      <div v-if="showCopyModal" class="fixed inset-0 bg-black/70 z-50 overflow-auto" @click.self="showCopyModal = false">
+        <div class="modal-card p-4 sm:p-6 space-y-4 mt-16 mx-4 sm:mx-auto sm:max-w-md">
+          <h2 class="text-xl font-semibold">Collectie kopiëren</h2>
+          
+          <div v-if="copySuccess" class="text-center py-4">
+            <Icon name="check" :size="48" class="mx-auto mb-2 text-green-400" />
+            <p class="text-green-400">Gekopieerd!</p>
+          </div>
+          
+          <template v-else>
+            <p class="text-[var(--color-text-muted)]">
+              Wil je een kopie maken van <strong class="text-white">{{ actionCollection?.name }}</strong>? 
+              Alle clips en tags worden gekopieerd.
+            </p>
+            
+            <div class="flex gap-3 pt-2">
+              <button @click="showCopyModal = false" class="btn btn-secondary flex-1">Annuleren</button>
+              <button @click="copyCollection" class="btn btn-primary flex-1" :disabled="isCopying">
+                {{ isCopying ? 'Kopiëren...' : 'Kopiëren' }}
+              </button>
+            </div>
+          </template>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Share Modal -->
+    <Teleport to="body">
+      <div v-if="showShareModal" class="fixed inset-0 bg-black/70 z-50 overflow-auto" @click.self="showShareModal = false">
+        <div class="modal-card p-4 sm:p-6 space-y-4 mt-16 mx-4 sm:mx-auto sm:max-w-md">
+          <h2 class="text-xl font-semibold">Collectie delen</h2>
+          
+          <div v-if="shareSuccess" class="text-center py-4">
+            <Icon name="check" :size="48" class="mx-auto mb-2 text-green-400" />
+            <p class="text-green-400">Gedeeld met {{ shareEmail }}!</p>
+          </div>
+          
+          <template v-else>
+            <p class="text-[var(--color-text-muted)]">
+              Deel <strong class="text-white">{{ actionCollection?.name }}</strong> met een andere gebruiker. 
+              Zij ontvangen een kopie van alle clips en tags.
+            </p>
+            
+            <input
+              v-model="shareEmail"
+              type="email"
+              placeholder="E-mail van ontvanger"
+              class="input w-full"
+              @keyup.enter="shareCollection"
+            />
+            
+            <p v-if="shareError" class="text-red-400 text-sm">{{ shareError }}</p>
+            
+            <div class="flex gap-3 pt-2">
+              <button @click="showShareModal = false" class="btn btn-secondary flex-1">Annuleren</button>
+              <button @click="shareCollection" class="btn btn-primary flex-1" :disabled="!shareEmail || isSharing">
+                {{ isSharing ? 'Delen...' : 'Delen' }}
+              </button>
+            </div>
+          </template>
         </div>
       </div>
     </Teleport>

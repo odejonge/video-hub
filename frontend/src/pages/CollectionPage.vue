@@ -1,9 +1,27 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/lib/api'
 import AppLayout from '@/components/AppLayout.vue'
 import Icon from '@/components/Icons.vue'
+
+// Modal refs and dynamic sizing
+const modalOuterRef = ref<HTMLElement | null>(null)
+const modalInnerRef = ref<HTMLElement | null>(null)
+const modalStyle = ref({ maxWidth: '400px', marginLeft: 'auto', marginRight: 'auto' })
+
+function updateModalSize() {
+  const bodyWidth = document.body.clientWidth
+  // Use body width minus 32px padding, max 400px
+  const calculatedWidth = Math.min(bodyWidth - 32, 400)
+  // Calculate left margin to center within the visible viewport
+  const leftMargin = (bodyWidth - calculatedWidth) / 2
+  modalStyle.value = {
+    maxWidth: `${calculatedWidth}px`,
+    marginLeft: `${leftMargin}px`,
+    marginRight: `${leftMargin}px`
+  }
+}
 
 interface Tag {
   id: string
@@ -47,11 +65,41 @@ const editingTag = ref<Tag | null>(null)
 // Clip editing
 const showEditClipModal = ref(false)
 const editingClip = ref<Clip | null>(null)
+
 const editClipTitle = ref('')
 const editClipTags = ref<string[]>([])
 const editClipTagInput = ref('')
 const showEditTagDropdown = ref(false)
 const isSavingClip = ref(false)
+
+// Copy/Move/Share modals
+const showCopyModal = ref(false)
+const showMoveModal = ref(false)
+const showShareModal = ref(false)
+const actionClip = ref<Clip | null>(null)
+const allCollections = ref<{ id: string; name: string }[]>([])
+const selectedCollectionId = ref<string | null>(null)
+const shareEmail = ref('')
+const isCopying = ref(false)
+const isMoving = ref(false)
+const isSharing = ref(false)
+const copySuccess = ref(false)
+const moveSuccess = ref(false)
+const shareSuccess = ref(false)
+const shareError = ref('')
+
+// Update modal size when any modal opens
+function onModalOpen() {
+  nextTick(() => {
+    updateModalSize()
+    setTimeout(updateModalSize, 50)
+    setTimeout(updateModalSize, 100)
+  })
+}
+watch(showEditClipModal, (val) => val && onModalOpen())
+watch(showCopyModal, (val) => val && onModalOpen())
+watch(showMoveModal, (val) => val && onModalOpen())
+watch(showShareModal, (val) => val && onModalOpen())
 
 const filteredClips = computed(() => {
   if (!collection.value) return []
@@ -155,6 +203,101 @@ async function deleteClip(clip: Clip, e: Event) {
     await loadCollection()
   } catch (err) {
     console.error('Failed to delete clip:', err)
+  }
+}
+
+// Copy/Move/Share functions
+async function loadAllCollections() {
+  try {
+    const { data } = await api.get<{ id: string; name: string }[]>('/api/collections')
+    allCollections.value = data
+  } catch {}
+}
+
+async function openCopyModal(clip: Clip, e: Event) {
+  e.stopPropagation()
+  await loadAllCollections()
+  actionClip.value = clip
+  selectedCollectionId.value = null
+  copySuccess.value = false
+  showCopyModal.value = true
+}
+
+async function copyClip() {
+  if (!actionClip.value || !selectedCollectionId.value) return
+  isCopying.value = true
+  try {
+    await api.post(`/api/clips/${actionClip.value.id}/copy`, {
+      targetCollectionId: selectedCollectionId.value,
+    })
+    copySuccess.value = true
+    setTimeout(() => {
+      showCopyModal.value = false
+    }, 1500)
+  } catch {
+    alert('Kopiëren mislukt')
+  } finally {
+    isCopying.value = false
+  }
+}
+
+async function openMoveModal(clip: Clip, e: Event) {
+  e.stopPropagation()
+  await loadAllCollections()
+  actionClip.value = clip
+  selectedCollectionId.value = null
+  moveSuccess.value = false
+  showMoveModal.value = true
+}
+
+async function moveClip() {
+  if (!actionClip.value || !selectedCollectionId.value) return
+  isMoving.value = true
+  try {
+    await api.post(`/api/clips/${actionClip.value.id}/move`, {
+      targetCollectionId: selectedCollectionId.value,
+    })
+    moveSuccess.value = true
+    setTimeout(() => {
+      showMoveModal.value = false
+      loadCollection()
+    }, 1500)
+  } catch {
+    alert('Verplaatsen mislukt')
+  } finally {
+    isMoving.value = false
+  }
+}
+
+async function openShareModal(clip: Clip, e: Event) {
+  e.stopPropagation()
+  actionClip.value = clip
+  shareEmail.value = ''
+  shareSuccess.value = false
+  shareError.value = ''
+  showShareModal.value = true
+}
+
+async function shareClip() {
+  if (!actionClip.value || !shareEmail.value) return
+  isSharing.value = true
+  shareError.value = ''
+  try {
+    await api.post(`/api/clips/${actionClip.value.id}/share`, {
+      targetUserEmail: shareEmail.value,
+    })
+    shareSuccess.value = true
+    setTimeout(() => {
+      showShareModal.value = false
+    }, 1500)
+  } catch (e: any) {
+    if (e.message?.includes('user_not_found')) {
+      shareError.value = 'Gebruiker niet gevonden'
+    } else {
+      shareError.value = 'Delen mislukt'
+    }
+  } finally {
+    isSharing.value = false
   }
 }
 
@@ -303,13 +446,28 @@ onMounted(loadCollection)
                 <div class="absolute bottom-2 right-2 bg-black/70 px-2 py-1 rounded text-xs font-mono">
                   {{ formatTime(clip.startTime) }} - {{ clip.endTime ? formatTime(clip.endTime) : '...' }}
                 </div>
-                <!-- Edit/Delete buttons -->
-                <div class="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <!-- Action buttons -->
+                <div class="absolute top-2 right-2 flex gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                   <button
                     @click="openEditClipModal(clip, $event)"
                     class="p-1.5 rounded bg-black/60 hover:bg-black/80 text-white"
                     title="Bewerken"
                   ><Icon name="edit" :size="16" /></button>
+                  <button
+                    @click="openCopyModal(clip, $event)"
+                    class="p-1.5 rounded bg-black/60 hover:bg-black/80 text-white"
+                    title="Kopiëren"
+                  ><Icon name="copy" :size="16" /></button>
+                  <button
+                    @click="openMoveModal(clip, $event)"
+                    class="p-1.5 rounded bg-black/60 hover:bg-black/80 text-white"
+                    title="Verplaatsen"
+                  ><Icon name="folder" :size="16" /></button>
+                  <button
+                    @click="openShareModal(clip, $event)"
+                    class="p-1.5 rounded bg-black/60 hover:bg-black/80 text-white"
+                    title="Delen"
+                  ><Icon name="share" :size="16" /></button>
                   <button
                     @click="deleteClip(clip, $event)"
                     class="p-1.5 rounded bg-black/60 hover:bg-red-500/80 text-white"
@@ -430,8 +588,8 @@ onMounted(loadCollection)
 
     <!-- Edit Clip Modal -->
     <Teleport to="body">
-      <div v-if="showEditClipModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" @click.self="showEditClipModal = false">
-        <div class="card p-6 w-full max-w-md space-y-4">
+      <div v-if="showEditClipModal" ref="modalOuterRef" class="fixed inset-0 bg-black/70 z-50 overflow-auto" @click.self="showEditClipModal = false">
+        <div ref="modalInnerRef" class="modal-card p-4 sm:p-6 space-y-4 mt-16" :style="modalStyle">
           <h2 class="text-xl font-semibold">Clip bewerken</h2>
           
           <!-- Title -->
@@ -511,6 +669,112 @@ onMounted(loadCollection)
               {{ isSavingClip ? 'Opslaan...' : 'Opslaan' }}
             </button>
           </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Copy Modal -->
+    <Teleport to="body">
+      <div v-if="showCopyModal" class="fixed inset-0 bg-black/70 z-50 overflow-auto" @click.self="showCopyModal = false">
+        <div class="modal-card p-4 sm:p-6 space-y-4 mt-16" :style="modalStyle">
+          <h2 class="text-xl font-semibold">Clip kopiëren</h2>
+          
+          <div v-if="copySuccess" class="text-center py-4">
+            <Icon name="check" :size="48" class="mx-auto mb-2 text-green-400" />
+            <p class="text-green-400">Gekopieerd!</p>
+          </div>
+          
+          <template v-else>
+            <p class="text-[var(--color-text-muted)]">Kies een collectie om de clip naar te kopiëren:</p>
+            
+            <select v-model="selectedCollectionId" class="input w-full">
+              <option :value="null" disabled>Selecteer collectie...</option>
+              <option 
+                v-for="col in allCollections.filter(c => c.id !== collection?.id)" 
+                :key="col.id" 
+                :value="col.id"
+              >
+                {{ col.name }}
+              </option>
+            </select>
+            
+            <div class="flex gap-3">
+              <button @click="showCopyModal = false" class="btn btn-secondary flex-1">Annuleren</button>
+              <button @click="copyClip" class="btn btn-primary flex-1" :disabled="!selectedCollectionId || isCopying">
+                {{ isCopying ? 'Kopiëren...' : 'Kopiëren' }}
+              </button>
+            </div>
+          </template>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Move Modal -->
+    <Teleport to="body">
+      <div v-if="showMoveModal" class="fixed inset-0 bg-black/70 z-50 overflow-auto" @click.self="showMoveModal = false">
+        <div class="modal-card p-4 sm:p-6 space-y-4 mt-16" :style="modalStyle">
+          <h2 class="text-xl font-semibold">Clip verplaatsen</h2>
+          
+          <div v-if="moveSuccess" class="text-center py-4">
+            <Icon name="check" :size="48" class="mx-auto mb-2 text-green-400" />
+            <p class="text-green-400">Verplaatst!</p>
+          </div>
+          
+          <template v-else>
+            <p class="text-[var(--color-text-muted)]">Kies een collectie om de clip naar te verplaatsen:</p>
+            
+            <select v-model="selectedCollectionId" class="input w-full">
+              <option :value="null" disabled>Selecteer collectie...</option>
+              <option 
+                v-for="col in allCollections.filter(c => c.id !== collection?.id)" 
+                :key="col.id" 
+                :value="col.id"
+              >
+                {{ col.name }}
+              </option>
+            </select>
+            
+            <div class="flex gap-3">
+              <button @click="showMoveModal = false" class="btn btn-secondary flex-1">Annuleren</button>
+              <button @click="moveClip" class="btn btn-primary flex-1" :disabled="!selectedCollectionId || isMoving">
+                {{ isMoving ? 'Verplaatsen...' : 'Verplaatsen' }}
+              </button>
+            </div>
+          </template>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Share Modal -->
+    <Teleport to="body">
+      <div v-if="showShareModal" class="fixed inset-0 bg-black/70 z-50 overflow-auto" @click.self="showShareModal = false">
+        <div class="modal-card p-4 sm:p-6 space-y-4 mt-16" :style="modalStyle">
+          <h2 class="text-xl font-semibold">Clip delen</h2>
+          
+          <div v-if="shareSuccess" class="text-center py-4">
+            <Icon name="check" :size="48" class="mx-auto mb-2 text-green-400" />
+            <p class="text-green-400">Gedeeld met {{ shareEmail }}!</p>
+          </div>
+          
+          <template v-else>
+            <p class="text-[var(--color-text-muted)]">Deel deze clip met een andere gebruiker. De clip wordt toegevoegd aan hun Inbox.</p>
+            
+            <input
+              v-model="shareEmail"
+              type="email"
+              placeholder="E-mail van ontvanger"
+              class="input w-full"
+            />
+            
+            <p v-if="shareError" class="text-red-400 text-sm">{{ shareError }}</p>
+            
+            <div class="flex gap-3">
+              <button @click="showShareModal = false" class="btn btn-secondary flex-1">Annuleren</button>
+              <button @click="shareClip" class="btn btn-primary flex-1" :disabled="!shareEmail || isSharing">
+                {{ isSharing ? 'Delen...' : 'Delen' }}
+              </button>
+            </div>
+          </template>
         </div>
       </div>
     </Teleport>
