@@ -1,9 +1,17 @@
-// API URL: use VITE_API_URL if set, otherwise use relative paths (same origin)
+// API URL: use VITE_API_URL if set, auto-detect Railway, or use relative paths
 function getApiUrl() {
+  // Check build-time env var first
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL
   }
-  // Empty string = relative URLs, works with reverse proxy
+  // Auto-detect Railway production: if frontend is on railway, use backend URL
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname
+    if (host.includes('.up.railway.app')) {
+      return 'https://video-hub-production-528f.up.railway.app'
+    }
+  }
+  // Development: use relative URL (works with reverse proxy)
   return ''
 }
 

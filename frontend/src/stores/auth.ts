@@ -52,16 +52,28 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('token')
   }
 
+  function getApiUrl() {
+    // Check build-time env var first
+    if (import.meta.env.VITE_API_URL) {
+      return import.meta.env.VITE_API_URL
+    }
+    // Auto-detect Railway production: if frontend is on railway, use backend URL
+    const host = window.location.hostname
+    if (host.includes('.up.railway.app')) {
+      // Replace frontend hostname with backend hostname
+      // mellow-dream-production-978e -> video-hub-production-528f
+      return 'https://video-hub-production-528f.up.railway.app'
+    }
+    // Development: use relative URL (works with reverse proxy)
+    return ''
+  }
+
   function loginWithGoogle() {
-    // Use API URL for OAuth redirects (backend handles auth)
-    const apiUrl = import.meta.env.VITE_API_URL || ''
-    window.location.href = `${apiUrl}/auth/google`
+    window.location.href = `${getApiUrl()}/auth/google`
   }
 
   function loginWithFacebook() {
-    // Use API URL for OAuth redirects (backend handles auth)
-    const apiUrl = import.meta.env.VITE_API_URL || ''
-    window.location.href = `${apiUrl}/auth/facebook`
+    window.location.href = `${getApiUrl()}/auth/facebook`
   }
 
   return {
