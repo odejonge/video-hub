@@ -18,11 +18,15 @@ FROM nginx:alpine
 # Copy built assets
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy nginx config for SPA routing
-COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+# Copy nginx config template for SPA routing
+COPY frontend/nginx.conf /etc/nginx/templates/default.conf.template
 
-# Expose port
+# Railway provides PORT env var, default to 80
+ENV PORT=80
+
+# Expose port (Railway will override)
 EXPOSE 80
 
-CMD ["nginx", "-g", "daemon off;"]
+# Use envsubst to replace ${PORT} in nginx config, then start nginx
+CMD ["/bin/sh", "-c", "envsubst '${PORT}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
 
