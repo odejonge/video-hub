@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import Icon from './Icons.vue'
+import { ref } from 'vue'
 
 const props = defineProps<{
   logs: string[]

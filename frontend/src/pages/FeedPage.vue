@@ -51,7 +51,6 @@ const wasPlayingBeforeScrub = ref(false)
 const userPaused = ref(false)
 
 const currentClip = computed(() => clips.value[currentIndex.value])
-const isCurrentBuffering = computed(() => isBuffering.value[currentIndex.value] ?? false)
 
 // Progress computed based on clip start/end times
 const progress = computed(() => {

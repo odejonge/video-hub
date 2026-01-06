@@ -380,7 +380,7 @@ async function saveEdit() {
   if (!clip.value || !editTitle.value.trim()) return
   isEditing.value = true
   try {
-    await api.put(`/api/clips/${clip.value.id}`, {
+    await api.patch(`/api/clips/${clip.value.id}`, {
       title: editTitle.value.trim(),
       tags: editTags.value,
     })
