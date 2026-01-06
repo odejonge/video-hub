@@ -277,7 +277,6 @@ router.post('/:id/copy', auth, async (req: AuthRequest, res) => {
         data: {
           videoId: clip.video.id,
           userId: req.user!.id,
-          canEdit: false,
         },
       })
     }
@@ -375,7 +374,6 @@ router.post('/:id/share', auth, async (req: AuthRequest, res) => {
         data: {
           videoId: clip.video.id,
           userId: targetUser.id,
-          canEdit: false,
         },
       })
     }
