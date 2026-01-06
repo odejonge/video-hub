@@ -9,7 +9,7 @@ WORKDIR /app
 
 # Install dependencies
 COPY backend/package*.json ./
-RUN npm ci --only=production=false
+RUN npm ci
 
 # Copy prisma schema and generate client
 COPY backend/prisma ./prisma
