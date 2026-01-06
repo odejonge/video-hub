@@ -37,9 +37,8 @@ services:
         condition: service_healthy
     labels:
       - traefik.enable=true
-      # Backend routes - accepts any host (ngrok, localhost, etc)
-      # Note: /auth/callback is frontend, so we exclude it
-      - traefik.http.routers.videohub-backend.rule=PathPrefix(`/api`) || PathPrefix(`/auth/google`) || PathPrefix(`/auth/facebook`) || PathPrefix(`/auth/me`) || PathPrefix(`/health`) || PathPrefix(`/webhooks`)
+      # Backend routes - only for ngrok host
+      - traefik.http.routers.videohub-backend.rule=Host(`dbc14d4f29df.ngrok-free.app`) && (PathPrefix(`/api`) || PathPrefix(`/auth/google`) || PathPrefix(`/auth/facebook`) || PathPrefix(`/auth/me`) || PathPrefix(`/health`) || PathPrefix(`/webhooks`))
       - traefik.http.routers.videohub-backend.entrypoints=web,websecure
       - traefik.http.routers.videohub-backend.priority=100
       - traefik.http.routers.videohub-backend.tls=true
@@ -61,8 +60,8 @@ services:
       - ./frontend/index.html:/app/index.html
     labels:
       - traefik.enable=true
-      # Frontend - accepts any host (catch-all, lower priority than backend)
-      - traefik.http.routers.videohub-frontend.rule=PathPrefix(`/`)
+      # Frontend - only for ngrok host
+      - traefik.http.routers.videohub-frontend.rule=Host(`dbc14d4f29df.ngrok-free.app`) && PathPrefix(`/`)
       - traefik.http.routers.videohub-frontend.entrypoints=web,websecure
       - traefik.http.routers.videohub-frontend.priority=1
       - traefik.http.routers.videohub-frontend.tls=true
