@@ -1,15 +1,16 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
+import '../types/express.js'
 
-export interface AuthRequest extends Request {
-  user?: { id: string }
-}
+// AuthRequest is now just Request with the global user property
+export type AuthRequest = Request
 
-export function auth(req: AuthRequest, res: Response, next: NextFunction) {
+export function auth(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers.authorization
 
   if (!header?.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'unauthorized' })
+    res.status(401).json({ error: 'unauthorized' })
+    return
   }
 
   try {
