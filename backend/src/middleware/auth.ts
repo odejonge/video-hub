@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
-import '../types/express.js'
 
 // AuthRequest is now just Request with the global user property
 export type AuthRequest = Request
