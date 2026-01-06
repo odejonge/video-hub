@@ -53,13 +53,15 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function loginWithGoogle() {
-    // Use relative URL - works with reverse proxy
-    window.location.href = '/auth/google'
+    // Use API URL for OAuth redirects (backend handles auth)
+    const apiUrl = import.meta.env.VITE_API_URL || ''
+    window.location.href = `${apiUrl}/auth/google`
   }
 
   function loginWithFacebook() {
-    // Use relative URL - works with reverse proxy
-    window.location.href = '/auth/facebook'
+    // Use API URL for OAuth redirects (backend handles auth)
+    const apiUrl = import.meta.env.VITE_API_URL || ''
+    window.location.href = `${apiUrl}/auth/facebook`
   }
 
   return {
