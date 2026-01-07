@@ -37,11 +37,10 @@ services:
         condition: service_healthy
     labels:
       - traefik.enable=true
-      # Backend routes - only for ngrok host
-      - traefik.http.routers.videohub-backend.rule=Host(`dbc14d4f29df.ngrok-free.app`) && (PathPrefix(`/api`) || PathPrefix(`/auth/google`) || PathPrefix(`/auth/facebook`) || PathPrefix(`/auth/me`) || PathPrefix(`/health`) || PathPrefix(`/webhooks`))
-      - traefik.http.routers.videohub-backend.entrypoints=web,websecure
+      # Backend routes - only for ngrok host (uses ngrok entrypoint without redirect)
+      - traefik.http.routers.videohub-backend.rule=Host(`e5e49d61233e.ngrok-free.app`) && (PathPrefix(`/api`) || PathPrefix(`/auth/google`) || PathPrefix(`/auth/facebook`) || PathPrefix(`/auth/me`) || PathPrefix(`/health`) || PathPrefix(`/webhooks`))
+      - traefik.http.routers.videohub-backend.entrypoints=ngrok
       - traefik.http.routers.videohub-backend.priority=100
-      - traefik.http.routers.videohub-backend.tls=true
       - traefik.http.services.videohub-backend.loadbalancer.server.port=3000
     networks:
       - videohub
@@ -60,11 +59,10 @@ services:
       - ./frontend/index.html:/app/index.html
     labels:
       - traefik.enable=true
-      # Frontend - only for ngrok host
-      - traefik.http.routers.videohub-frontend.rule=Host(`dbc14d4f29df.ngrok-free.app`) && PathPrefix(`/`)
-      - traefik.http.routers.videohub-frontend.entrypoints=web,websecure
+      # Frontend - only for ngrok host (uses ngrok entrypoint without redirect)
+      - traefik.http.routers.videohub-frontend.rule=Host(`e5e49d61233e.ngrok-free.app`) && PathPrefix(`/`)
+      - traefik.http.routers.videohub-frontend.entrypoints=ngrok
       - traefik.http.routers.videohub-frontend.priority=1
-      - traefik.http.routers.videohub-frontend.tls=true
       - traefik.http.services.videohub-frontend.loadbalancer.server.port=5173
     networks:
       - videohub

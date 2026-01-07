@@ -146,7 +146,13 @@ async function loadCollection() {
 }
 
 function openClip(clip: Clip) {
-  router.push(`/clips/${clip.id}`)
+  router.push({
+    path: `/clips/${clip.id}`,
+    query: {
+      collectionId: collection.value?.id,
+      ...(selectedTagId.value && { tagId: selectedTagId.value })
+    }
+  })
 }
 
 function openEditClipModal(clip: Clip, e: Event) {

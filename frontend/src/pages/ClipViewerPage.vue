@@ -23,10 +23,21 @@ interface Collection {
   name: string
 }
 
+interface CollectionWithClips {
+  id: string
+  name: string
+  clips: Clip[]
+  tags: { id: string; name: string; _count: { clips: number } }[]
+}
+
 const route = useRoute()
 const router = useRouter()
 
 const clip = ref<Clip | null>(null)
+// Navigation state
+const navigationClips = ref<Clip[]>([])
+const currentClipIndex = ref(-1)
+const hasNavigation = computed(() => navigationClips.value.length > 1)
 const videoRef = ref<HTMLVideoElement | null>(null)
 const containerRef = ref<HTMLDivElement | null>(null)
 const loading = ref(true)
@@ -107,6 +118,53 @@ async function loadCollections() {
     collections.value = data
   } catch {}
 }
+
+async function loadNavigationClips() {
+  const collectionId = route.query.collectionId as string
+  if (!collectionId) return
+  
+  try {
+    const { data } = await api.get<CollectionWithClips>(`/api/collections/${collectionId}`)
+    const tagId = route.query.tagId as string
+    
+    // Filter clips by tag if tagId is provided
+    if (tagId) {
+      navigationClips.value = data.clips.filter(c => 
+        c.tags.some(ct => ct.tag.id === tagId)
+      )
+    } else {
+      navigationClips.value = data.clips
+    }
+    
+    // Find current clip index
+    currentClipIndex.value = navigationClips.value.findIndex(c => c.id === route.params.id)
+  } catch (e) {
+    console.error('Failed to load navigation clips:', e)
+  }
+}
+
+function goToPreviousClip() {
+  if (currentClipIndex.value > 0) {
+    const prevClip = navigationClips.value[currentClipIndex.value - 1]
+    router.replace({
+      path: `/clips/${prevClip.id}`,
+      query: route.query
+    })
+  }
+}
+
+function goToNextClip() {
+  if (currentClipIndex.value < navigationClips.value.length - 1) {
+    const nextClip = navigationClips.value[currentClipIndex.value + 1]
+    router.replace({
+      path: `/clips/${nextClip.id}`,
+      query: route.query
+    })
+  }
+}
+
+const canGoPrevious = computed(() => currentClipIndex.value > 0)
+const canGoNext = computed(() => currentClipIndex.value < navigationClips.value.length - 1)
 
 function onVideoLoaded() {
   if (!videoRef.value || !clip.value) return
@@ -435,6 +493,14 @@ function handleKeydown(e: KeyboardEvent) {
       controlsVisible.value = true
       resetHideControlsTimer()
       break
+    case 'ArrowUp':
+      e.preventDefault()
+      if (canGoPrevious.value) goToPreviousClip()
+      break
+    case 'ArrowDown':
+      e.preventDefault()
+      if (canGoNext.value) goToNextClip()
+      break
     case 'f':
       e.preventDefault()
       toggleFullscreen()
@@ -457,6 +523,7 @@ watch(playing, (isPlaying) => {
 
 onMounted(() => {
   loadClip()
+  loadNavigationClips()
   window.addEventListener('keydown', handleKeydown)
   document.addEventListener('fullscreenchange', onFullscreenChange)
   document.addEventListener('webkitfullscreenchange', onFullscreenChange)
@@ -465,6 +532,14 @@ onMounted(() => {
   const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
   const isMobile = /Mobi|Android/i.test(ua) || navigator.maxTouchPoints > 1
   isIOSMobile.value = isIOS && isMobile
+})
+
+// Watch for route changes to reload clip when navigating
+watch(() => route.params.id, (newId) => {
+  if (newId) {
+    loadClip()
+    currentClipIndex.value = navigationClips.value.findIndex(c => c.id === newId)
+  }
 })
 
 onUnmounted(() => {
@@ -512,6 +587,37 @@ onUnmounted(() => {
       @click.stop="toggleControls"
       @touchend.stop.prevent="toggleControls"
     />
+
+    <!-- Navigation buttons (left/right sides) -->
+    <template v-if="hasNavigation && clip">
+      <!-- Previous clip button -->
+      <button
+        v-if="canGoPrevious"
+        @click.stop="goToPreviousClip"
+        class="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all opacity-70 hover:opacity-100"
+        title="Vorige clip (↑)"
+      >
+        <Icon name="chevron-left" :size="28" />
+      </button>
+      
+      <!-- Next clip button -->
+      <button
+        v-if="canGoNext"
+        @click.stop="goToNextClip"
+        class="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all opacity-70 hover:opacity-100"
+        title="Volgende clip (↓)"
+      >
+        <Icon name="chevron-right" :size="28" />
+      </button>
+      
+      <!-- Navigation indicator -->
+      <div 
+        v-if="controlsVisible"
+        class="absolute bottom-28 left-1/2 -translate-x-1/2 z-30 bg-black/60 px-3 py-1 rounded-full text-white/80 text-sm"
+      >
+        {{ currentClipIndex + 1 }} / {{ navigationClips.length }}
+      </div>
+    </template>
 
     <!-- Controls overlay -->
     <transition name="fade">
