@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# Pre-commit hook to bump version
+# This runs before each commit and increments the patch version
+
+VERSION_FILE="VERSION"
+
+if [ ! -f "$VERSION_FILE" ]; then
+  echo "1.0.0" > "$VERSION_FILE"
+fi
+
+# Read current version
+VERSION=$(cat "$VERSION_FILE")
+
+# Split into major.minor.patch
+IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+# Increment patch
+PATCH=$((PATCH + 1))
+
+# Write new version
+NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+echo "$NEW_VERSION" > "$VERSION_FILE"
+
+# Copy to frontend for build
+cp "$VERSION_FILE" "frontend/public/VERSION"
+
+# Stage the version files so they're included in the commit
+git add "$VERSION_FILE"
+git add "frontend/public/VERSION"
+
+echo "✅ Version bumped: $VERSION -> $NEW_VERSION"
+

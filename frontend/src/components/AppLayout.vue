@@ -1,10 +1,21 @@
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import Icon from '@/components/Icons.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
+const version = ref('')
+
+onMounted(async () => {
+  try {
+    const res = await fetch('/VERSION')
+    version.value = (await res.text()).trim()
+  } catch {
+    version.value = '?.?.?'
+  }
+})
 
 function logout() {
   auth.logout()
@@ -71,6 +82,8 @@ function logout() {
             Uitloggen
           </button>
         </div>
+        <!-- Version number -->
+        <span v-if="version" class="text-[10px] text-gray-500 ml-2">v{{ version }}</span>
       </div>
     </nav>
 
