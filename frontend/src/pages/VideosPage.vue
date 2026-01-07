@@ -258,12 +258,12 @@ onMounted(loadVideos)
           @click="router.push(`/videos/${video.id}`)"
         >
           <!-- Thumbnail -->
-          <div class="aspect-video bg-black/50 relative">
+          <div class="aspect-square bg-black/50 relative">
             <img
               v-if="video.thumbnailUrl"
               :src="video.thumbnailUrl"
               :alt="video.title"
-              class="w-full h-full object-cover"
+              class="w-full h-full object-cover object-center"
             />
             <div v-else class="w-full h-full flex items-center justify-center">
               <Icon name="video" :size="48" class="text-[var(--color-text-muted)]" />

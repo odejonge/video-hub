@@ -430,12 +430,12 @@ onMounted(loadCollection)
               @click="openClip(clip)"
               class="card overflow-hidden cursor-pointer group hover:ring-2 hover:ring-brand-500/50 transition-all"
             >
-              <div class="aspect-video bg-black/50 relative">
+              <div class="aspect-square bg-black/50 relative">
                 <img
                   v-if="clip.video.thumbnailUrl"
                   :src="clip.video.thumbnailUrl"
                   :alt="clip.title"
-                  class="w-full h-full object-cover"
+                  class="w-full h-full object-cover object-center"
                 />
                 <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                   <div class="w-12 h-12 rounded-full bg-white/20 backdrop-blur flex items-center justify-center">
