@@ -203,7 +203,7 @@ onMounted(loadVideos)
     <div class="max-w-6xl mx-auto px-6 py-8">
       <!-- Header -->
       <div class="flex items-center justify-between mb-8">
-        <div>
+        <div class="hidden sm:block">
           <h1 class="text-3xl font-bold">Mijn Video's</h1>
           <p class="text-[var(--color-text-muted)] mt-1">
             {{ videos.length }} video{{ videos.length !== 1 ? "'s" : '' }}
