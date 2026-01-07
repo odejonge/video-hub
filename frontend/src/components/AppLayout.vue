@@ -1,21 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import Icon from '@/components/Icons.vue'
+import versionData from '@/version.json'
 
 const auth = useAuthStore()
 const router = useRouter()
-const version = ref('')
-
-onMounted(async () => {
-  try {
-    const res = await fetch('/VERSION')
-    version.value = (await res.text()).trim()
-  } catch {
-    version.value = '?.?.?'
-  }
-})
+const version = versionData.version
 
 function logout() {
   auth.logout()

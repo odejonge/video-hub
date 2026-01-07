@@ -22,12 +22,12 @@ PATCH=$((PATCH + 1))
 NEW_VERSION="$MAJOR.$MINOR.$PATCH"
 echo "$NEW_VERSION" > "$VERSION_FILE"
 
-# Copy to frontend for build
-cp "$VERSION_FILE" "frontend/public/VERSION"
+# Update frontend version.json (imported by Vite)
+echo "{\"version\": \"$NEW_VERSION\"}" > "frontend/src/version.json"
 
 # Stage the version files so they're included in the commit
 git add "$VERSION_FILE"
-git add "frontend/public/VERSION"
+git add "frontend/src/version.json"
 
 echo "✅ Version bumped: $VERSION -> $NEW_VERSION"
 
