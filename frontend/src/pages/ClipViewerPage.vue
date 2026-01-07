@@ -215,6 +215,16 @@ function toggleControls() {
   }
 }
 
+function onMouseMove() {
+  // Show controls on mouse move (desktop)
+  if (!controlsVisible.value) {
+    controlsVisible.value = true
+  }
+  if (playing.value) {
+    resetHideControlsTimer()
+  }
+}
+
 const isScrubbing = ref(false)
 const progressBarRef = ref<HTMLElement | null>(null)
 const wasPlayingBeforeScrub = ref(false)
@@ -558,6 +568,7 @@ onUnmounted(() => {
   <div 
     ref="containerRef"
     class="fixed inset-0 bg-black flex items-center justify-center"
+    @mousemove="onMouseMove"
   >
     <!-- Loading -->
     <div v-if="loading" class="text-white">
@@ -588,36 +599,44 @@ onUnmounted(() => {
       @touchend.stop.prevent="toggleControls"
     />
 
-    <!-- Navigation buttons (left/right sides) -->
-    <template v-if="hasNavigation && clip">
-      <!-- Previous clip button -->
-      <button
-        v-if="canGoPrevious"
-        @click.stop="goToPreviousClip"
-        class="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all opacity-70 hover:opacity-100"
-        title="Vorige clip (↑)"
-      >
-        <Icon name="chevron-left" :size="28" />
-      </button>
-      
-      <!-- Next clip button -->
-      <button
-        v-if="canGoNext"
-        @click.stop="goToNextClip"
-        class="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all opacity-70 hover:opacity-100"
-        title="Volgende clip (↓)"
-      >
-        <Icon name="chevron-right" :size="28" />
-      </button>
-      
-      <!-- Navigation indicator -->
+    <!-- Navigation buttons (left/right sides) - also controlled by controlsVisible -->
+    <transition name="fade">
+      <template v-if="hasNavigation && clip && controlsVisible">
+        <!-- Previous clip button -->
+        <button
+          v-if="canGoPrevious"
+          @click.stop="goToPreviousClip"
+          class="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all opacity-70 hover:opacity-100"
+          title="Vorige clip (↑)"
+        >
+          <Icon name="chevron-left" :size="28" />
+        </button>
+      </template>
+    </transition>
+    
+    <transition name="fade">
+      <template v-if="hasNavigation && clip && controlsVisible">
+        <!-- Next clip button -->
+        <button
+          v-if="canGoNext"
+          @click.stop="goToNextClip"
+          class="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all opacity-70 hover:opacity-100"
+          title="Volgende clip (↓)"
+        >
+          <Icon name="chevron-right" :size="28" />
+        </button>
+      </template>
+    </transition>
+    
+    <!-- Navigation indicator -->
+    <transition name="fade">
       <div 
-        v-if="controlsVisible"
+        v-if="hasNavigation && clip && controlsVisible"
         class="absolute bottom-28 left-1/2 -translate-x-1/2 z-30 bg-black/60 px-3 py-1 rounded-full text-white/80 text-sm"
       >
         {{ currentClipIndex + 1 }} / {{ navigationClips.length }}
       </div>
-    </template>
+    </transition>
 
     <!-- Controls overlay -->
     <transition name="fade">
