@@ -69,12 +69,14 @@ function logout() {
             <img :src="auth.user.avatar" alt="" class="w-full h-full object-cover" />
           </div>
           <span class="text-sm hidden md:inline">{{ auth.user?.name }}</span>
-          <button @click="logout" class="text-[var(--color-text-muted)] hover:text-white transition-colors text-sm">
-            Uitloggen
-          </button>
+          <div class="flex flex-col items-end">
+            <button @click="logout" class="text-[var(--color-text-muted)] hover:text-white transition-colors text-sm">
+              Uitloggen
+            </button>
+            <!-- Version number -->
+            <span v-if="version" class="text-[10px] text-gray-500 leading-none">v{{ version }}</span>
+          </div>
         </div>
-        <!-- Version number -->
-        <span v-if="version" class="text-[10px] text-gray-500 ml-2">v{{ version }}</span>
       </div>
     </nav>
 
