@@ -45,3 +45,4 @@ echo ""
 echo "📋 Logs: docker compose logs -f"
 echo "🛑 Stop: docker compose down"
 
+

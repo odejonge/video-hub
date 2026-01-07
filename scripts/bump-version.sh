@@ -25,3 +25,4 @@ git add "$VERSION_FILE"
 
 echo "Version bumped: $VERSION -> $NEW_VERSION"
 
+

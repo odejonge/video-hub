@@ -117,6 +117,11 @@ const filteredEditTags = computed(() => {
     .slice(0, 10)
 })
 
+const tagsWithClips = computed(() => {
+  if (!collection.value) return []
+  return collection.value.tags.filter(t => t._count.clips > 0)
+})
+
 async function loadCollection() {
   loading.value = true
   try {
@@ -399,7 +404,7 @@ onMounted(loadCollection)
         <!-- Clips Tab -->
         <div v-if="activeTab === 'clips'">
           <!-- Tag filter -->
-          <div v-if="collection.tags.length" class="flex flex-wrap gap-2 mb-6">
+          <div v-if="tagsWithClips.length" class="flex flex-wrap gap-2 mb-6">
             <button
               @click="selectedTagId = null"
               class="px-3 py-1 rounded-full text-sm transition-colors"
@@ -410,7 +415,7 @@ onMounted(loadCollection)
               Alle
             </button>
             <button
-              v-for="tag in collection.tags"
+              v-for="tag in tagsWithClips"
               :key="tag.id"
               @click="selectedTagId = tag.id"
               class="px-3 py-1 rounded-full text-sm transition-colors"
