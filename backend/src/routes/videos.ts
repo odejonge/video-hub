@@ -27,7 +27,7 @@ router.get('/', auth, async (req: AuthRequest, res) => {
 
 // Get single video with its clips (for a specific collection context)
 router.get('/:id', auth, async (req: AuthRequest, res) => {
-  const { collectionId } = req.query
+  const collectionId = typeof req.query.collectionId === 'string' ? req.query.collectionId : undefined
 
   const video = await prisma.video.findFirst({
     where: {
@@ -41,7 +41,7 @@ router.get('/:id', auth, async (req: AuthRequest, res) => {
       owner: { select: { id: true, name: true, email: true } },
       clips: collectionId
         ? {
-            where: { collectionId: collectionId as string },
+            where: { collectionId },
             include: {
               tags: { include: { tag: true } },
             },
@@ -234,7 +234,8 @@ router.get('/:id/shared-with', auth, async (req: AuthRequest, res) => {
     return res.status(404).json({ error: 'video_not_found' })
   }
 
-  res.json(video.sharedWith.map((access) => access.user))
+  const users = video.sharedWith.map((access: { user: { id: string; name: string | null; email: string; avatar: string | null } }) => access.user)
+  res.json(users)
 })
 
 // Create a clip from a video into a collection
