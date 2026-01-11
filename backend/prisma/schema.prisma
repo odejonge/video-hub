@@ -130,7 +130,7 @@ model Transaction {
 
 model CreditPackage {
   id       String  @id @default(cuid())
-  name     String
+  name     String  @unique
   credits  Int
   priceEur Int
   active   Boolean @default(true)
