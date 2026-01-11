@@ -6,8 +6,10 @@ const router = Router()
 
 // Get single clip
 router.get('/:id', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
+  
   const clip = await prisma.clip.findFirst({
-    where: { id: req.params.id },
+    where: { id },
     include: {
       collection: true,
       video: true,
@@ -29,11 +31,12 @@ router.get('/:id', auth, async (req: AuthRequest, res) => {
 
 // Update clip
 router.patch('/:id', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
   const { title, startTime, endTime, tagNames } = req.body
 
   // Verify ownership through collection
   const clip = await prisma.clip.findFirst({
-    where: { id: req.params.id },
+    where: { id },
     include: { collection: true },
   })
 
@@ -43,7 +46,7 @@ router.patch('/:id', auth, async (req: AuthRequest, res) => {
 
   // Update basic fields
   const updated = await prisma.clip.update({
-    where: { id: req.params.id },
+    where: { id },
     data: { title, startTime, endTime },
   })
 
@@ -75,7 +78,7 @@ router.patch('/:id', auth, async (req: AuthRequest, res) => {
 
   // Return updated clip with tags
   const result = await prisma.clip.findUnique({
-    where: { id: req.params.id },
+    where: { id },
     include: {
       video: true,
       tags: { include: { tag: true } },
@@ -87,8 +90,10 @@ router.patch('/:id', auth, async (req: AuthRequest, res) => {
 
 // Delete clip
 router.delete('/:id', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
+  
   const clip = await prisma.clip.findFirst({
-    where: { id: req.params.id },
+    where: { id },
     include: { collection: true },
   })
 
@@ -96,18 +101,19 @@ router.delete('/:id', auth, async (req: AuthRequest, res) => {
     return res.status(404).json({ error: 'clip_not_found' })
   }
 
-  await prisma.clip.delete({ where: { id: req.params.id } })
+  await prisma.clip.delete({ where: { id } })
 
   res.status(204).send()
 })
 
 // Copy clip to another collection (same user)
 router.post('/:id/copy', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
   const { targetCollectionId } = req.body
 
   // Get source clip
   const clip = await prisma.clip.findFirst({
-    where: { id: req.params.id },
+    where: { id },
     include: {
       collection: true,
       tags: { include: { tag: true } },
@@ -167,11 +173,12 @@ router.post('/:id/copy', auth, async (req: AuthRequest, res) => {
 
 // Move clip to another collection (same user)
 router.post('/:id/move', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
   const { targetCollectionId } = req.body
 
   // Get source clip
   const clip = await prisma.clip.findFirst({
-    where: { id: req.params.id },
+    where: { id },
     include: {
       collection: true,
       tags: { include: { tag: true } },
@@ -229,11 +236,12 @@ router.post('/:id/move', auth, async (req: AuthRequest, res) => {
 
 // Share clip with another user (copy to their Inbox collection)
 router.post('/:id/share', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
   const { targetUserEmail } = req.body
 
   // Get source clip
   const clip = await prisma.clip.findFirst({
-    where: { id: req.params.id },
+    where: { id },
     include: {
       collection: true,
       video: true,
@@ -316,14 +324,16 @@ router.post('/:id/share', auth, async (req: AuthRequest, res) => {
 
 // Search clips across user's collections
 router.get('/', auth, async (req: AuthRequest, res) => {
-  const { q, tag, collectionId } = req.query
+  const q = typeof req.query.q === 'string' ? req.query.q : undefined
+  const tag = typeof req.query.tag === 'string' ? req.query.tag : undefined
+  const collectionId = typeof req.query.collectionId === 'string' ? req.query.collectionId : undefined
 
   const clips = await prisma.clip.findMany({
     where: {
       collection: { userId: req.user!.id },
-      ...(collectionId && { collectionId: collectionId as string }),
-      ...(q && { title: { contains: q as string, mode: 'insensitive' } }),
-      ...(tag && { tags: { some: { tag: { name: { equals: (tag as string).toLowerCase() } } } } }),
+      ...(collectionId && { collectionId }),
+      ...(q && { title: { contains: q, mode: 'insensitive' } }),
+      ...(tag && { tags: { some: { tag: { name: { equals: tag.toLowerCase() } } } } }),
     },
     include: {
       video: true,

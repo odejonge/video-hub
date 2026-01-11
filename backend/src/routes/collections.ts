@@ -19,9 +19,11 @@ router.get('/', auth, async (req: AuthRequest, res) => {
 
 // Get single collection with clips and tags
 router.get('/:id', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
+  
   const collection = await prisma.collection.findFirst({
     where: {
-      id: req.params.id,
+      id,
       OR: [{ userId: req.user!.id }, { isPublic: true }],
     },
     include: {
@@ -93,10 +95,11 @@ router.post('/', auth, async (req: AuthRequest, res) => {
 
 // Update collection
 router.patch('/:id', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
   const { name, description, isPublic } = req.body
 
   const collection = await prisma.collection.updateMany({
-    where: { id: req.params.id, userId: req.user!.id },
+    where: { id, userId: req.user!.id },
     data: { name, description, isPublic },
   })
 
@@ -105,7 +108,7 @@ router.patch('/:id', auth, async (req: AuthRequest, res) => {
   }
 
   const updated = await prisma.collection.findUnique({
-    where: { id: req.params.id },
+    where: { id },
     include: { tags: true },
   })
   res.json(updated)
@@ -113,8 +116,10 @@ router.patch('/:id', auth, async (req: AuthRequest, res) => {
 
 // Delete collection
 router.delete('/:id', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
+  
   const result = await prisma.collection.deleteMany({
-    where: { id: req.params.id, userId: req.user!.id },
+    where: { id, userId: req.user!.id },
   })
 
   if (result.count === 0) {
@@ -126,9 +131,11 @@ router.delete('/:id', auth, async (req: AuthRequest, res) => {
 
 // Get tags for a collection
 router.get('/:id/tags', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
+  
   const collection = await prisma.collection.findFirst({
     where: {
-      id: req.params.id,
+      id,
       OR: [{ userId: req.user!.id }, { isPublic: true }],
     },
   })
@@ -138,7 +145,7 @@ router.get('/:id/tags', auth, async (req: AuthRequest, res) => {
   }
 
   const tags = await prisma.tag.findMany({
-    where: { collectionId: req.params.id },
+    where: { collectionId: id },
     include: {
       _count: { select: { clips: true } },
     },
@@ -150,10 +157,11 @@ router.get('/:id/tags', auth, async (req: AuthRequest, res) => {
 
 // Create tag in collection
 router.post('/:id/tags', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
   const { name } = req.body
 
   const collection = await prisma.collection.findFirst({
-    where: { id: req.params.id, userId: req.user!.id },
+    where: { id, userId: req.user!.id },
   })
 
   if (!collection) {
@@ -164,7 +172,7 @@ router.post('/:id/tags', auth, async (req: AuthRequest, res) => {
 
   // Check if tag already exists
   const existing = await prisma.tag.findUnique({
-    where: { collectionId_name: { collectionId: req.params.id, name: normalizedName } },
+    where: { collectionId_name: { collectionId: id, name: normalizedName } },
   })
 
   if (existing) {
@@ -174,7 +182,7 @@ router.post('/:id/tags', auth, async (req: AuthRequest, res) => {
   const tag = await prisma.tag.create({
     data: {
       name: normalizedName,
-      collectionId: req.params.id,
+      collectionId: id,
     },
   })
 
@@ -183,10 +191,12 @@ router.post('/:id/tags', auth, async (req: AuthRequest, res) => {
 
 // Update tag
 router.patch('/:collectionId/tags/:tagId', auth, async (req: AuthRequest, res) => {
+  const collectionId = req.params.collectionId as string
+  const tagId = req.params.tagId as string
   const { name } = req.body
 
   const collection = await prisma.collection.findFirst({
-    where: { id: req.params.collectionId, userId: req.user!.id },
+    where: { id: collectionId, userId: req.user!.id },
   })
 
   if (!collection) {
@@ -197,7 +207,7 @@ router.patch('/:collectionId/tags/:tagId', auth, async (req: AuthRequest, res) =
 
   try {
     const tag = await prisma.tag.update({
-      where: { id: req.params.tagId },
+      where: { id: tagId },
       data: { name: normalizedName },
     })
     res.json(tag)
@@ -208,24 +218,29 @@ router.patch('/:collectionId/tags/:tagId', auth, async (req: AuthRequest, res) =
 
 // Delete tag
 router.delete('/:collectionId/tags/:tagId', auth, async (req: AuthRequest, res) => {
+  const collectionId = req.params.collectionId as string
+  const tagId = req.params.tagId as string
+  
   const collection = await prisma.collection.findFirst({
-    where: { id: req.params.collectionId, userId: req.user!.id },
+    where: { id: collectionId, userId: req.user!.id },
   })
 
   if (!collection) {
     return res.status(404).json({ error: 'collection_not_found' })
   }
 
-  await prisma.tag.delete({ where: { id: req.params.tagId } })
+  await prisma.tag.delete({ where: { id: tagId } })
 
   res.status(204).send()
 })
 
 // Copy collection (duplicate for current user)
 router.post('/:id/copy', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
+  
   const sourceCollection = await prisma.collection.findFirst({
     where: {
-      id: req.params.id,
+      id,
       OR: [{ userId: req.user!.id }, { isPublic: true }],
     },
     include: {
@@ -310,10 +325,11 @@ router.post('/:id/copy', auth, async (req: AuthRequest, res) => {
 
 // Share collection with another user
 router.post('/:id/share', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
   const { targetUserEmail } = req.body
 
   const sourceCollection = await prisma.collection.findFirst({
-    where: { id: req.params.id, userId: req.user!.id },
+    where: { id, userId: req.user!.id },
     include: {
       tags: true,
       clips: {

@@ -27,11 +27,12 @@ router.get('/', auth, async (req: AuthRequest, res) => {
 
 // Get single video with its clips (for a specific collection context)
 router.get('/:id', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
   const collectionId = typeof req.query.collectionId === 'string' ? req.query.collectionId : undefined
 
   const video = await prisma.video.findFirst({
     where: {
-      id: req.params.id,
+      id,
       OR: [
         { ownerId: req.user!.id },
         { sharedWith: { some: { userId: req.user!.id } } },
@@ -162,11 +163,12 @@ router.post('/confirm-upload', auth, async (req: AuthRequest, res) => {
 
 // Share video with another user
 router.post('/:id/share', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
   const { email } = req.body
 
   // Verify ownership
   const video = await prisma.video.findFirst({
-    where: { id: req.params.id, ownerId: req.user!.id },
+    where: { id, ownerId: req.user!.id },
   })
 
   if (!video) {
@@ -201,9 +203,12 @@ router.post('/:id/share', auth, async (req: AuthRequest, res) => {
 
 // Remove video sharing
 router.delete('/:id/share/:userId', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
+  const userId = req.params.userId as string
+  
   // Verify ownership
   const video = await prisma.video.findFirst({
-    where: { id: req.params.id, ownerId: req.user!.id },
+    where: { id, ownerId: req.user!.id },
   })
 
   if (!video) {
@@ -211,7 +216,7 @@ router.delete('/:id/share/:userId', auth, async (req: AuthRequest, res) => {
   }
 
   await prisma.videoAccess.deleteMany({
-    where: { videoId: video.id, userId: req.params.userId },
+    where: { videoId: video.id, userId },
   })
 
   res.status(204).send()
@@ -219,8 +224,10 @@ router.delete('/:id/share/:userId', auth, async (req: AuthRequest, res) => {
 
 // Get users video is shared with
 router.get('/:id/shared-with', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
+  
   const video = await prisma.video.findFirst({
-    where: { id: req.params.id, ownerId: req.user!.id },
+    where: { id, ownerId: req.user!.id },
     include: {
       sharedWith: {
         include: {
@@ -234,18 +241,19 @@ router.get('/:id/shared-with', auth, async (req: AuthRequest, res) => {
     return res.status(404).json({ error: 'video_not_found' })
   }
 
-  const users = video.sharedWith.map((access: { user: { id: string; name: string | null; email: string; avatar: string | null } }) => access.user)
+  const users = video.sharedWith.map((access) => access.user)
   res.json(users)
 })
 
 // Create a clip from a video into a collection
 router.post('/:videoId/clips', auth, async (req: AuthRequest, res) => {
+  const videoId = req.params.videoId as string
   const { title, startTime, endTime, collectionId, tagNames } = req.body
 
   // Verify video access
   const video = await prisma.video.findFirst({
     where: {
-      id: req.params.videoId,
+      id: videoId,
       OR: [
         { ownerId: req.user!.id },
         { sharedWith: { some: { userId: req.user!.id } } },
@@ -304,8 +312,10 @@ router.post('/:videoId/clips', auth, async (req: AuthRequest, res) => {
 
 // Delete video (only owner can delete)
 router.delete('/:id', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
+  
   const video = await prisma.video.findFirst({
-    where: { id: req.params.id, ownerId: req.user!.id },
+    where: { id, ownerId: req.user!.id },
   })
 
   if (!video) {
@@ -323,7 +333,7 @@ router.delete('/:id', auth, async (req: AuthRequest, res) => {
     )
   }
 
-  await prisma.video.delete({ where: { id: req.params.id } })
+  await prisma.video.delete({ where: { id } })
 
   res.status(204).send()
 })

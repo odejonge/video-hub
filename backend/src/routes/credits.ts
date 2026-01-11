@@ -78,17 +78,19 @@ router.post('/purchase', auth, async (req: AuthRequest, res) => {
       checkoutUrl: payment.getCheckoutUrl(),
       paymentId: payment.id,
     })
-  } catch (err: any) {
-    console.error('Mollie purchase error:', err.message)
-    res.status(500).json({ error: 'payment_failed', message: err.message })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    console.error('Mollie purchase error:', message)
+    res.status(500).json({ error: 'payment_failed', message })
   }
 })
 
 // Check payment status (also acts as fallback if webhook was missed)
 router.get('/payment/:id', auth, async (req: AuthRequest, res) => {
   try {
-    console.log('Checking payment status for:', req.params.id)
-    const payment = await getMollie().payments.get(req.params.id)
+    const paymentId = req.params.id as string
+    console.log('Checking payment status for:', paymentId)
+    const payment = await getMollie().payments.get(paymentId)
     console.log('Payment status result:', payment.status)
     
     // Verify this payment belongs to the current user
@@ -134,11 +136,11 @@ router.get('/payment/:id', auth, async (req: AuthRequest, res) => {
       amount: payment.amount,
       description: payment.description,
     })
-  } catch (err: any) {
-    console.error('Payment check error:', err.message)
-    res.status(500).json({ error: 'payment_check_failed', message: err.message })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    console.error('Payment check error:', message)
+    res.status(500).json({ error: 'payment_check_failed', message })
   }
 })
 
 export default router
-
