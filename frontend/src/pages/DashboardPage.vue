@@ -28,6 +28,8 @@ const showNewModal = ref(false)
 const newCollectionName = ref('')
 const newCollectionDescription = ref('')
 const selectedTemplateId = ref<string | null>(null)
+const isCreating = ref(false)
+const createError = ref('')
 
 // Edit collection modal
 const showEditModal = ref(false)
@@ -57,23 +59,34 @@ async function loadTemplates() {
 }
 
 async function createCollection() {
-  if (!newCollectionName.value.trim()) return
+  if (!newCollectionName.value.trim() || isCreating.value) return
 
-  await api.post('/api/collections', {
-    name: newCollectionName.value,
-    description: newCollectionDescription.value || null,
-    templateId: selectedTemplateId.value,
-  })
+  isCreating.value = true
+  createError.value = ''
+  
+  try {
+    await api.post('/api/collections', {
+      name: newCollectionName.value,
+      description: newCollectionDescription.value || null,
+      templateId: selectedTemplateId.value,
+    })
 
-  newCollectionName.value = ''
-  newCollectionDescription.value = ''
-  selectedTemplateId.value = null
-  showNewModal.value = false
-  await loadCollections()
+    newCollectionName.value = ''
+    newCollectionDescription.value = ''
+    selectedTemplateId.value = null
+    showNewModal.value = false
+    await loadCollections()
+  } catch (e) {
+    console.error('Failed to create collection:', e)
+    createError.value = 'Aanmaken mislukt, probeer opnieuw'
+  } finally {
+    isCreating.value = false
+  }
 }
 
 function openNewModal() {
   showNewModal.value = true
+  createError.value = ''
   loadTemplates()
 }
 
@@ -321,9 +334,13 @@ onMounted(loadCollections)
             </div>
           </div>
 
+          <p v-if="createError" class="text-red-400 text-sm">{{ createError }}</p>
+          
           <div class="flex gap-3 justify-end pt-2">
-            <button @click="showNewModal = false" class="btn btn-secondary">Annuleren</button>
-            <button @click="createCollection" class="btn btn-primary" :disabled="!newCollectionName.trim()">Aanmaken</button>
+            <button @click="showNewModal = false" class="btn btn-secondary" :disabled="isCreating">Annuleren</button>
+            <button @click="createCollection" class="btn btn-primary" :disabled="!newCollectionName.trim() || isCreating">
+              {{ isCreating ? 'Aanmaken...' : 'Aanmaken' }}
+            </button>
           </div>
         </div>
       </div>
