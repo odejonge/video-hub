@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { api } from '@/lib/api'
+import { api, getApiUrl } from '@/lib/api'
 
 interface User {
   id: string
@@ -50,20 +50,6 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     token.value = null
     localStorage.removeItem('token')
-  }
-
-  function getApiUrl() {
-    // Check build-time env var first
-    if (import.meta.env.VITE_API_URL) {
-      return import.meta.env.VITE_API_URL
-    }
-    // Auto-detect Railway production or custom domain
-    const host = window.location.hostname
-    if (host.includes('.up.railway.app') || host.includes('danceclips.nl')) {
-      return 'https://video-hub-production-528f.up.railway.app'
-    }
-    // Development: use relative URL (works with reverse proxy)
-    return ''
   }
 
   function loginWithGoogle() {

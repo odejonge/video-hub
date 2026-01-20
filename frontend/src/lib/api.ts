@@ -1,5 +1,5 @@
 // API URL: use VITE_API_URL if set, auto-detect Railway/production, or use relative paths
-function getApiUrl() {
+export function getApiUrl() {
   // Check build-time env var first
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL
