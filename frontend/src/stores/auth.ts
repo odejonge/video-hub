@@ -57,11 +57,9 @@ export const useAuthStore = defineStore('auth', () => {
     if (import.meta.env.VITE_API_URL) {
       return import.meta.env.VITE_API_URL
     }
-    // Auto-detect Railway production: if frontend is on railway, use backend URL
+    // Auto-detect Railway production or custom domain
     const host = window.location.hostname
-    if (host.includes('.up.railway.app')) {
-      // Replace frontend hostname with backend hostname
-      // mellow-dream-production-978e -> video-hub-production-528f
+    if (host.includes('.up.railway.app') || host.includes('danceclips.nl')) {
       return 'https://video-hub-production-528f.up.railway.app'
     }
     // Development: use relative URL (works with reverse proxy)
