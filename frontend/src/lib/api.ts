@@ -1,13 +1,14 @@
-// API URL: use VITE_API_URL if set, auto-detect Railway, or use relative paths
+// API URL: use VITE_API_URL if set, auto-detect Railway/production, or use relative paths
 function getApiUrl() {
   // Check build-time env var first
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL
   }
-  // Auto-detect Railway production: if frontend is on railway, use backend URL
+  // Auto-detect production environment
   if (typeof window !== 'undefined') {
     const host = window.location.hostname
-    if (host.includes('.up.railway.app')) {
+    // Railway URLs or custom domain
+    if (host.includes('.up.railway.app') || host.includes('danceclips.nl')) {
       return 'https://video-hub-production-528f.up.railway.app'
     }
   }
