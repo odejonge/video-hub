@@ -78,7 +78,10 @@ function handleFacebookLogin() {
             Inloggen met Google
           </button>
 
+          <!-- TODO: Facebook login tijdelijk verborgen - wacht op Business Verification -->
+          <!-- Zet v-if="true" om weer te activeren -->
           <button 
+            v-if="false"
             @click="handleFacebookLogin" 
             :disabled="!termsAccepted"
             class="btn btn-secondary text-lg px-8 py-3 flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
