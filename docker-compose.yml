@@ -31,6 +31,8 @@ services:
       DATABASE_URL: postgresql://videohub:videohub@postgres:5432/videohub
       NODE_ENV: development
       PORT: 3000
+    ports:
+      - "3000:3000"
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
@@ -40,7 +42,7 @@ services:
     labels:
       - traefik.enable=true
       # Backend routes - only for ngrok host (uses ngrok entrypoint without redirect)
-      - traefik.http.routers.videohub-backend.rule=Host(`e5e49d61233e.ngrok-free.app`) && (PathPrefix(`/api`) || PathPrefix(`/auth/google`) || PathPrefix(`/auth/facebook`) || PathPrefix(`/auth/me`) || PathPrefix(`/health`) || PathPrefix(`/webhooks`))
+      - traefik.http.routers.videohub-backend.rule=Host(`6ae7b9e1baba.ngrok-free.app`) && (PathPrefix(`/api`) || PathPrefix(`/auth/google`) || PathPrefix(`/auth/facebook`) || PathPrefix(`/auth/me`) || PathPrefix(`/health`) || PathPrefix(`/webhooks`))
       - traefik.http.routers.videohub-backend.entrypoints=ngrok
       - traefik.http.routers.videohub-backend.priority=100
       - traefik.http.services.videohub-backend.loadbalancer.server.port=3000
@@ -55,14 +57,16 @@ services:
       dockerfile: Dockerfile
     container_name: videohub-frontend
     environment:
-      VITE_API_URL: "" # Empty = same origin, uses relative paths
+      VITE_API_URL: "http://localhost:3000" # Point to backend for local dev
+    ports:
+      - "5173:5173"
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/index.html:/app/index.html
     labels:
       - traefik.enable=true
       # Frontend - only for ngrok host (uses ngrok entrypoint without redirect)
-      - traefik.http.routers.videohub-frontend.rule=Host(`e5e49d61233e.ngrok-free.app`) && PathPrefix(`/`)
+      - traefik.http.routers.videohub-frontend.rule=Host(`6ae7b9e1baba.ngrok-free.app`) && PathPrefix(`/`)
       - traefik.http.routers.videohub-frontend.entrypoints=ngrok
       - traefik.http.routers.videohub-frontend.priority=1
       - traefik.http.services.videohub-frontend.loadbalancer.server.port=5173
