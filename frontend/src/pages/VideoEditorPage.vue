@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/lib/api'
 import AppLayout from '@/components/AppLayout.vue'
 import Icon from '@/components/Icons.vue'
+import { useHls } from '@/composables/useHls'
 
 interface Tag {
   tag: { id: string; name: string }
@@ -39,6 +40,10 @@ const router = useRouter()
 const video = ref<Video | null>(null)
 const videoRef = ref<HTMLVideoElement | null>(null)
 const collections = ref<Collection[]>([])
+
+// HLS support
+const videoUrl = computed(() => video.value?.videoUrl || '')
+const { setupVideo } = useHls(videoRef, videoUrl)
 
 // Player state
 const isPlaying = ref(false)
@@ -447,7 +452,6 @@ onUnmounted(() => {
               <div class="relative bg-black aspect-video">
                 <video
                   ref="videoRef"
-                  :src="video.videoUrl"
                   class="w-full h-full"
                   playsinline
                   @timeupdate="handleTimeUpdate"

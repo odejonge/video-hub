@@ -144,7 +144,8 @@ router.post('/confirm-upload', auth, async (req: AuthRequest, res) => {
 
   const libraryId = process.env.BUNNY_LIBRARY_ID
   const cdnHostname = process.env.BUNNY_CDN_HOSTNAME || `vz-${libraryId}.b-cdn.net`
-  const videoUrl = `https://${cdnHostname}/${bunnyVideoId}/play_720p.mp4`
+  // Use HLS streaming for adaptive quality (works with all resolutions)
+  const videoUrl = `https://${cdnHostname}/${bunnyVideoId}/playlist.m3u8`
   const thumbnailUrl = `https://${cdnHostname}/${bunnyVideoId}/thumbnail.jpg`
 
   const video = await prisma.video.create({

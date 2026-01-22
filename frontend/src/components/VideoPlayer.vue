@@ -2,6 +2,7 @@
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { api } from '@/lib/api'
 import Icon from '@/components/Icons.vue'
+import Hls from 'hls.js'
 
 interface DanceMove {
   id: string
@@ -38,6 +39,34 @@ const isPlaying = ref(false)
 const currentTime = ref(0)
 const duration = ref(0)
 const playbackRate = ref(1)
+let hlsInstance: Hls | null = null
+
+function setupVideo() {
+  if (!videoRef.value) return
+  
+  const videoUrl = props.clip.videoUrl
+  
+  // Clean up previous HLS instance
+  if (hlsInstance) {
+    hlsInstance.destroy()
+    hlsInstance = null
+  }
+  
+  // Check if it's an HLS stream
+  if (videoUrl.endsWith('.m3u8')) {
+    if (Hls.isSupported()) {
+      hlsInstance = new Hls()
+      hlsInstance.loadSource(videoUrl)
+      hlsInstance.attachMedia(videoRef.value)
+    } else if (videoRef.value.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari has native HLS support
+      videoRef.value.src = videoUrl
+    }
+  } else {
+    // Regular MP4
+    videoRef.value.src = videoUrl
+  }
+}
 
 // Edit mode
 const isEditing = ref(false)
@@ -200,15 +229,21 @@ function handleKeydown(e: KeyboardEvent) {
 
 onMounted(() => {
   document.addEventListener('keydown', handleKeydown)
+  setupVideo()
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown)
+  if (hlsInstance) {
+    hlsInstance.destroy()
+    hlsInstance = null
+  }
 })
 
 watch(
   () => props.clip,
   () => {
+    setupVideo()
     if (videoRef.value && props.clip.startTime) {
       videoRef.value.currentTime = props.clip.startTime
     }
@@ -223,7 +258,6 @@ watch(
     <div class="relative bg-black aspect-video">
       <video
         ref="videoRef"
-        :src="clip.videoUrl"
         class="w-full h-full"
         @timeupdate="handleTimeUpdate"
         @loadedmetadata="handleLoadedMetadata"
