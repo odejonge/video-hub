@@ -39,10 +39,10 @@ export function useHls(videoRef: Ref<HTMLVideoElement | null>, videoUrl: Ref<str
     }
   }
 
-  // Watch for URL changes
-  watch(videoUrl, () => {
+  // Watch for URL and videoRef changes (immediate: true for initial load)
+  watch([videoUrl, videoRef], () => {
     setupVideo()
-  })
+  }, { immediate: true })
 
   onUnmounted(() => {
     cleanup()
