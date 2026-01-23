@@ -1,4 +1,4 @@
-import { ref, onUnmounted, watch, type Ref } from 'vue'
+import { onUnmounted, watch, type Ref } from 'vue'
 import Hls from 'hls.js'
 
 export function useHls(videoRef: Ref<HTMLVideoElement | null>, videoUrl: Ref<string>) {

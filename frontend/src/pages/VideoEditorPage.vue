@@ -41,9 +41,9 @@ const video = ref<Video | null>(null)
 const videoRef = ref<HTMLVideoElement | null>(null)
 const collections = ref<Collection[]>([])
 
-// HLS support
+// HLS support - useHls automatically sets up video when videoUrl changes
 const videoUrl = computed(() => video.value?.videoUrl || '')
-const { setupVideo } = useHls(videoRef, videoUrl)
+useHls(videoRef, videoUrl)
 
 // Player state
 const isPlaying = ref(false)
