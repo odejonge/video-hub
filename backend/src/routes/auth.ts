@@ -38,6 +38,34 @@ router.get(
   }
 )
 
+// Dev login - only available in development (bypasses OAuth)
+if (process.env.NODE_ENV === 'development') {
+  router.get('/dev-login', async (req, res) => {
+    try {
+      let user = await prisma.user.findFirst({
+        where: { email: 'dev@danceclips.nl' },
+      })
+
+      if (!user) {
+        user = await prisma.user.create({
+          data: {
+            email: 'dev@danceclips.nl',
+            name: 'Dev User',
+            provider: 'dev',
+            providerId: 'dev-1',
+            credits: 999,
+          },
+        })
+      }
+
+      redirectWithToken(res, user)
+    } catch (error) {
+      console.error('Dev login error:', error)
+      res.redirect(`${process.env.FRONTEND_URL}/auth/failed`)
+    }
+  })
+}
+
 // Auth failed
 router.get('/failed', (req, res) => {
   res.redirect(`${process.env.FRONTEND_URL}/auth/failed`)

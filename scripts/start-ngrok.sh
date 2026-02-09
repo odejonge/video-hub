@@ -1,64 +1,75 @@
 #!/bin/bash
 
-# Start ngrok tunnel and auto-update configuration
+# Start ngrok tunnel with static domain
 # Usage: ./scripts/start-ngrok.sh
+#
+# Prerequisites:
+#   1. Claim a free static domain at https://dashboard.ngrok.com/domains
+#   2. Set NGROK_DOMAIN below to your claimed domain
 
-cd "$(dirname "$0")/.."
+# ──────────────────────────────────────────────
+# CONFIG: Set your ngrok static domain here (claim at https://dashboard.ngrok.com/domains)
+NGROK_DOMAIN="${NGROK_DOMAIN:-confirmatory-aliza-radially.ngrok-free.dev}"
+# ──────────────────────────────────────────────
 
-echo "🚀 Starting ngrok tunnel on port 8082..."
-
-# Kill any existing ngrok
-pkill -f "ngrok http 8082" 2>/dev/null
-
-# Start ngrok in background
-ngrok http 8082 --log=stdout > /tmp/ngrok.log 2>&1 &
-NGROK_PID=$!
-
-echo "⏳ Waiting for ngrok to start..."
-sleep 3
-
-# Get the ngrok URL from the API
-NGROK_URL=$(curl -s http://localhost:4040/api/tunnels | grep -o '"public_url":"https://[^"]*' | head -1 | cut -d'"' -f4)
-
-if [ -z "$NGROK_URL" ]; then
-    echo "❌ Failed to get ngrok URL. Check if ngrok is running."
-    echo "   Try: curl http://localhost:4040/api/tunnels"
+if [[ "$NGROK_DOMAIN" == "CHANGEME"* ]]; then
+    echo "❌ NGROK_DOMAIN is not set!"
+    echo ""
+    echo "   1. Claim a free static domain at https://dashboard.ngrok.com/domains"
+    echo "   2. Set it in this script or via environment variable:"
+    echo "      export NGROK_DOMAIN=your-domain.ngrok-free.app"
+    echo "      ./scripts/start-ngrok.sh"
     exit 1
 fi
 
-echo "✅ Ngrok URL: $NGROK_URL"
+cd "$(dirname "$0")/.."
 
-# Extract just the hostname
-NGROK_HOST=$(echo "$NGROK_URL" | sed 's|https://||')
+echo "🚀 Starting ngrok tunnel: https://$NGROK_DOMAIN → localhost:8082"
 
-echo ""
-echo "📝 Updating configuration files..."
+# Kill any existing ngrok
+pkill -f "ngrok http" 2>/dev/null
+sleep 1
 
-# Update docker-compose.yml
-sed -i '' "s|Host(\`[^']*\.ngrok-free\.app\`)|Host(\`$NGROK_HOST\`)|g" docker-compose.yml
-echo "   ✅ docker-compose.yml updated"
-
-# Update backend/.env
+# Update backend/.env with ngrok URLs
 if [ -f backend/.env ]; then
-    sed -i '' "s|FRONTEND_URL=https://[^[:space:]]*\.ngrok-free\.app|FRONTEND_URL=$NGROK_URL|g" backend/.env
-    sed -i '' "s|BACKEND_URL=https://[^[:space:]]*\.ngrok-free\.app|BACKEND_URL=$NGROK_URL|g" backend/.env
-    echo "   ✅ backend/.env updated"
+    # Update or add FRONTEND_URL
+    if grep -q "^FRONTEND_URL=" backend/.env; then
+        sed -i '' "s|^FRONTEND_URL=.*|FRONTEND_URL=https://$NGROK_DOMAIN|" backend/.env
+    else
+        echo "FRONTEND_URL=https://$NGROK_DOMAIN" >> backend/.env
+    fi
+    # Update or add BACKEND_URL
+    if grep -q "^BACKEND_URL=" backend/.env; then
+        sed -i '' "s|^BACKEND_URL=.*|BACKEND_URL=https://$NGROK_DOMAIN|" backend/.env
+    else
+        echo "BACKEND_URL=https://$NGROK_DOMAIN" >> backend/.env
+    fi
+    echo "✅ backend/.env updated"
 fi
 
-echo ""
+# Export for docker-compose variable substitution
+export NGROK_DOMAIN
+
 echo "🔄 Restarting containers..."
 docker compose up -d backend frontend
+
+# Start ngrok with static domain
+echo "🔗 Starting ngrok..."
+ngrok http 8082 --domain="$NGROK_DOMAIN" --log=stdout &
+NGROK_PID=$!
+
+sleep 2
 
 echo ""
 echo "=========================================="
 echo "✅ Done! Your app is available at:"
-echo "   $NGROK_URL"
+echo "   https://$NGROK_DOMAIN"
 echo ""
-echo "⚠️  Don't forget to update Google OAuth redirect URI:"
-echo "   ${NGROK_URL}/auth/google/callback"
+echo "   OAuth callback (already registered once):"
+echo "   https://$NGROK_DOMAIN/auth/google/callback"
 echo "=========================================="
 echo ""
 echo "Press Ctrl+C to stop ngrok"
 
-# Keep script running and show ngrok logs
-tail -f /tmp/ngrok.log
+# Wait for ngrok process
+wait $NGROK_PID

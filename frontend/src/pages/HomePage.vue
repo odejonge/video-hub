@@ -5,6 +5,7 @@ import Icon from '@/components/Icons.vue'
 
 const auth = useAuthStore()
 const termsAccepted = ref(false)
+const isDev = import.meta.env.DEV
 
 function handleGoogleLogin() {
   if (!termsAccepted.value) return
@@ -14,6 +15,10 @@ function handleGoogleLogin() {
 function handleFacebookLogin() {
   if (!termsAccepted.value) return
   auth.loginWithFacebook()
+}
+
+function handleDevLogin() {
+  auth.loginDev()
 }
 </script>
 
@@ -90,6 +95,18 @@ function handleFacebookLogin() {
               <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
             </svg>
             Inloggen met Facebook
+          </button>
+
+          <!-- Dev login - alleen zichtbaar in development -->
+          <button 
+            v-if="isDev"
+            @click="handleDevLogin"
+            class="btn text-lg px-8 py-3 flex items-center gap-3 border border-dashed border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 rounded-lg"
+          >
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 18l6-6-6-6M8 6l-6 6 6 6" />
+            </svg>
+            Dev Login
           </button>
         </div>
       </div>

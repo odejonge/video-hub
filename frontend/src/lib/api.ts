@@ -1,18 +1,22 @@
 // API URL: use VITE_API_URL if set, auto-detect Railway/production, or use relative paths
 export function getApiUrl() {
-  // Check build-time env var first
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL
-  }
-  // Auto-detect production environment
+  // Auto-detect environment based on hostname
   if (typeof window !== 'undefined') {
     const host = window.location.hostname
+    // ngrok: use relative URL (Traefik routes both frontend & backend)
+    if (host.includes('ngrok')) {
+      return ''
+    }
     // Railway URLs or custom domain
     if (host.includes('.up.railway.app') || host.includes('danceclips.nl')) {
       return 'https://video-hub-production-528f.up.railway.app'
     }
   }
-  // Development: use relative URL (works with reverse proxy)
+  // Check build-time env var (localhost dev)
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL
+  }
+  // Fallback: relative URL
   return ''
 }
 

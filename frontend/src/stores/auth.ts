@@ -60,6 +60,10 @@ export const useAuthStore = defineStore('auth', () => {
     window.location.href = `${getApiUrl()}/auth/facebook`
   }
 
+  function loginDev() {
+    window.location.href = `${getApiUrl()}/auth/dev-login`
+  }
+
   return {
     user,
     token,
@@ -70,5 +74,6 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     loginWithGoogle,
     loginWithFacebook,
+    loginDev,
   }
 })
