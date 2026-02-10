@@ -8,6 +8,7 @@ import clipRoutes from './routes/clips.js'
 import collectionRoutes from './routes/collections.js'
 import creditRoutes from './routes/credits.js'
 import videoRoutes from './routes/videos.js'
+import tagRoutes from './routes/tags.js'
 import templateRoutes from './routes/templates.js'
 import webhookRoutes from './routes/webhooks.js'
 
@@ -61,6 +62,7 @@ app.use('/auth', authRoutes)
 app.use('/api/clips', clipRoutes)
 app.use('/api/collections', collectionRoutes)
 app.use('/api/credits', creditRoutes)
+app.use('/api/tags', tagRoutes)
 app.use('/api/videos', videoRoutes)
 app.use('/api/templates', templateRoutes)
 

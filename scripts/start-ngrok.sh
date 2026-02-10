@@ -6,6 +6,8 @@
 # Prerequisites:
 #   1. Claim a free static domain at https://dashboard.ngrok.com/domains
 #   2. Set NGROK_DOMAIN below to your claimed domain
+#
+# On exit (Ctrl+C, kill, crash): automatically restores .env to localhost
 
 # ──────────────────────────────────────────────
 # CONFIG: Set your ngrok static domain here (claim at https://dashboard.ngrok.com/domains)
@@ -24,6 +26,31 @@ fi
 
 cd "$(dirname "$0")/.."
 
+# ── Cleanup function: restore .env and restart backend ──
+cleanup() {
+    echo ""
+    echo "🔄 Stopping ngrok and restoring localhost config..."
+
+    # Kill ngrok
+    pkill -f "ngrok http" 2>/dev/null
+
+    # Restore .env to localhost
+    if [ -f backend/.env ]; then
+        sed -i '' "s|^FRONTEND_URL=.*|FRONTEND_URL=http://localhost:5173|" backend/.env
+        sed -i '' "s|^BACKEND_URL=.*|BACKEND_URL=http://localhost:3000|" backend/.env
+        echo "✅ backend/.env restored to localhost"
+    fi
+
+    # Recreate backend so it picks up the restored .env
+    docker compose up -d --force-recreate backend 2>/dev/null
+    echo "✅ Backend restarted with localhost config"
+
+    exit 0
+}
+
+# Trap all exit signals (Ctrl+C, kill, terminal close, script errors)
+trap cleanup EXIT INT TERM HUP
+
 echo "🚀 Starting ngrok tunnel: https://$NGROK_DOMAIN → localhost:8082"
 
 # Kill any existing ngrok
@@ -32,26 +59,24 @@ sleep 1
 
 # Update backend/.env with ngrok URLs
 if [ -f backend/.env ]; then
-    # Update or add FRONTEND_URL
     if grep -q "^FRONTEND_URL=" backend/.env; then
         sed -i '' "s|^FRONTEND_URL=.*|FRONTEND_URL=https://$NGROK_DOMAIN|" backend/.env
     else
         echo "FRONTEND_URL=https://$NGROK_DOMAIN" >> backend/.env
     fi
-    # Update or add BACKEND_URL
     if grep -q "^BACKEND_URL=" backend/.env; then
         sed -i '' "s|^BACKEND_URL=.*|BACKEND_URL=https://$NGROK_DOMAIN|" backend/.env
     else
         echo "BACKEND_URL=https://$NGROK_DOMAIN" >> backend/.env
     fi
-    echo "✅ backend/.env updated"
+    echo "✅ backend/.env updated to ngrok"
 fi
 
 # Export for docker-compose variable substitution
 export NGROK_DOMAIN
 
 echo "🔄 Restarting containers..."
-docker compose up -d backend frontend
+docker compose up -d --force-recreate backend frontend
 
 # Start ngrok with static domain
 echo "🔗 Starting ngrok..."
@@ -67,9 +92,11 @@ echo "   https://$NGROK_DOMAIN"
 echo ""
 echo "   OAuth callback (already registered once):"
 echo "   https://$NGROK_DOMAIN/auth/google/callback"
+echo ""
+echo "   On exit: .env will be restored to localhost automatically"
 echo "=========================================="
 echo ""
-echo "Press Ctrl+C to stop ngrok"
+echo "Press Ctrl+C to stop"
 
-# Wait for ngrok process
+# Wait for ngrok process (cleanup runs automatically on exit)
 wait $NGROK_PID

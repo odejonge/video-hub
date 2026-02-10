@@ -1,8 +1,47 @@
+import crypto from 'crypto'
 import { Router } from 'express'
 import { prisma } from '../config/db.js'
 import { auth, AuthRequest } from '../middleware/auth.js'
 
 const router = Router()
+
+// Public: get shared collection by share token (no auth required)
+router.get('/shared/:shareToken', async (req, res) => {
+  const { shareToken } = req.params
+
+  const collection = await prisma.collection.findUnique({
+    where: { shareToken },
+    include: {
+      tags: {
+        include: {
+          _count: { select: { clips: true } },
+        },
+        orderBy: { name: 'asc' },
+      },
+      clips: {
+        include: {
+          video: {
+            select: {
+              id: true,
+              videoUrl: true,
+              thumbnailUrl: true,
+            },
+          },
+          tags: { include: { tag: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      },
+    },
+  })
+
+  if (!collection) {
+    return res.status(404).json({ error: 'collection_not_found' })
+  }
+
+  // Return without user-specific data
+  const { userId, ...publicData } = collection
+  res.json(publicData)
+})
 
 // Get all collections for current user
 router.get('/', auth, async (req: AuthRequest, res) => {
@@ -155,7 +194,7 @@ router.get('/:id/tags', auth, async (req: AuthRequest, res) => {
   res.json(tags)
 })
 
-// Create tag in collection
+// Create tag in collection (idempotent - returns existing if duplicate)
 router.post('/:id/tags', auth, async (req: AuthRequest, res) => {
   const id = req.params.id as string
   const { name } = req.body
@@ -170,13 +209,13 @@ router.post('/:id/tags', auth, async (req: AuthRequest, res) => {
 
   const normalizedName = name.trim().toLowerCase()
 
-  // Check if tag already exists
+  // Return existing tag if it already exists (idempotent)
   const existing = await prisma.tag.findUnique({
     where: { collectionId_name: { collectionId: id, name: normalizedName } },
   })
 
   if (existing) {
-    return res.status(409).json({ error: 'tag_already_exists', tag: existing })
+    return res.json(existing)
   }
 
   const tag = await prisma.tag.create({
@@ -187,6 +226,50 @@ router.post('/:id/tags', auth, async (req: AuthRequest, res) => {
   })
 
   res.status(201).json(tag)
+})
+
+// Batch create tags in collection
+router.post('/:id/tags/batch', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
+  const { names } = req.body as { names: string[] }
+
+  if (!Array.isArray(names) || names.length === 0) {
+    return res.status(400).json({ error: 'names_required' })
+  }
+
+  const collection = await prisma.collection.findFirst({
+    where: { id, userId: req.user!.id },
+  })
+
+  if (!collection) {
+    return res.status(404).json({ error: 'collection_not_found' })
+  }
+
+  const normalizedNames = [...new Set(names.map((n) => n.trim().toLowerCase()).filter(Boolean))]
+
+  // Find which tags already exist in this collection
+  const existingTags = await prisma.tag.findMany({
+    where: { collectionId: id, name: { in: normalizedNames } },
+  })
+  const existingNames = new Set(existingTags.map((t) => t.name))
+
+  // Create only the new ones
+  const newNames = normalizedNames.filter((n) => !existingNames.has(n))
+
+  if (newNames.length > 0) {
+    await prisma.tag.createMany({
+      data: newNames.map((name) => ({ name, collectionId: id })),
+    })
+  }
+
+  // Return all tags for this collection
+  const allTags = await prisma.tag.findMany({
+    where: { collectionId: id },
+    include: { _count: { select: { clips: true } } },
+    orderBy: { name: 'asc' },
+  })
+
+  res.status(201).json(allTags)
 })
 
 // Update tag
@@ -321,6 +404,47 @@ router.post('/:id/copy', auth, async (req: AuthRequest, res) => {
   }
 
   res.status(201).json({ id: newCollection.id, name: newCollection.name })
+})
+
+// Generate share link for collection
+router.post('/:id/share-link', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
+
+  const collection = await prisma.collection.findFirst({
+    where: { id, userId: req.user!.id },
+  })
+
+  if (!collection) {
+    return res.status(404).json({ error: 'collection_not_found' })
+  }
+
+  // Reuse existing token or generate new one
+  const shareToken = collection.shareToken || crypto.randomUUID()
+
+  if (!collection.shareToken) {
+    await prisma.collection.update({
+      where: { id },
+      data: { shareToken },
+    })
+  }
+
+  res.json({ shareToken })
+})
+
+// Revoke share link
+router.delete('/:id/share-link', auth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string
+
+  const result = await prisma.collection.updateMany({
+    where: { id, userId: req.user!.id },
+    data: { shareToken: null },
+  })
+
+  if (result.count === 0) {
+    return res.status(404).json({ error: 'collection_not_found' })
+  }
+
+  res.status(204).send()
 })
 
 // Share collection with another user

@@ -30,6 +30,7 @@ model Collection {
   name        String
   description String?
   isPublic    Boolean  @default(false)
+  shareToken  String?  @unique
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   clips       Clip[]

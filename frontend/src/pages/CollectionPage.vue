@@ -46,6 +46,7 @@ interface Collection {
   id: string
   name: string
   description: string | null
+  shareToken: string | null
   tags: Tag[]
   clips: Clip[]
 }
@@ -59,7 +60,10 @@ const selectedTagId = ref<string | null>(null)
 
 // Tag management
 const showNewTagModal = ref(false)
-const newTagName = ref('')
+const tagSuggestions = ref<string[]>([])
+const tagSearch = ref('')
+const selectedNewTags = ref<Set<string>>(new Set())
+const isAddingTags = ref(false)
 const editingTag = ref<Tag | null>(null)
 
 // Clip editing
@@ -87,6 +91,48 @@ const copySuccess = ref(false)
 const moveSuccess = ref(false)
 const shareSuccess = ref(false)
 const shareError = ref('')
+
+// Share link state
+const shareLinkLoading = ref(false)
+const shareLinkCopied = ref(false)
+
+const shareUrl = computed(() => {
+  if (!collection.value?.shareToken) return null
+  return `${window.location.origin}/shared/${collection.value.shareToken}`
+})
+
+async function generateShareLink() {
+  if (!collection.value) return
+  shareLinkLoading.value = true
+  try {
+    const { data } = await api.post<{ shareToken: string }>(
+      `/api/collections/${collection.value.id}/share-link`
+    )
+    collection.value.shareToken = data.shareToken
+  } catch (err) {
+    console.error('Failed to generate share link:', err)
+  } finally {
+    shareLinkLoading.value = false
+  }
+}
+
+async function revokeShareLink() {
+  if (!collection.value) return
+  if (!confirm('Deellink intrekken? Iedereen met de link verliest toegang.')) return
+  try {
+    await api.delete(`/api/collections/${collection.value.id}/share-link`)
+    collection.value.shareToken = null
+  } catch (err) {
+    console.error('Failed to revoke share link:', err)
+  }
+}
+
+async function copyShareLink() {
+  if (!shareUrl.value) return
+  await navigator.clipboard.writeText(shareUrl.value)
+  shareLinkCopied.value = true
+  setTimeout(() => { shareLinkCopied.value = false }, 2000)
+}
 
 // Update modal size when any modal opens
 function onModalOpen() {
@@ -319,20 +365,73 @@ function formatTime(seconds: number) {
 }
 
 // Tag management
-async function createTag() {
-  if (!newTagName.value.trim() || !collection.value) return
-  
+async function openTagModal() {
+  tagSearch.value = ''
+  selectedNewTags.value = new Set()
+  showNewTagModal.value = true
   try {
-    await api.post(`/api/collections/${collection.value.id}/tags`, {
-      name: newTagName.value,
+    const res = await api.get<string[]>('/api/tags/suggestions')
+    tagSuggestions.value = res.data
+  } catch {
+    tagSuggestions.value = []
+  }
+}
+
+const existingTagNames = computed(() => {
+  if (!collection.value) return new Set<string>()
+  return new Set(collection.value.tags.map((t) => t.name))
+})
+
+const filteredTagSuggestions = computed(() => {
+  const search = tagSearch.value.trim().toLowerCase()
+  return tagSuggestions.value
+    .filter((name) => !existingTagNames.value.has(name))
+    .filter((name) => !search || name.includes(search))
+})
+
+const canCreateCustomTag = computed(() => {
+  const search = tagSearch.value.trim().toLowerCase()
+  if (!search) return false
+  // Don't show create option if tag already exists (in suggestions or collection)
+  return !tagSuggestions.value.includes(search) && !existingTagNames.value.has(search)
+})
+
+function toggleTag(name: string) {
+  const tags = new Set(selectedNewTags.value)
+  if (tags.has(name)) {
+    tags.delete(name)
+  } else {
+    tags.add(name)
+  }
+  selectedNewTags.value = tags
+}
+
+function addCustomTag() {
+  const name = tagSearch.value.trim().toLowerCase()
+  if (!name) return
+  const tags = new Set(selectedNewTags.value)
+  tags.add(name)
+  selectedNewTags.value = tags
+  // Also add to suggestions so it shows as checked
+  if (!tagSuggestions.value.includes(name)) {
+    tagSuggestions.value = [...tagSuggestions.value, name].sort()
+  }
+  tagSearch.value = ''
+}
+
+async function addSelectedTags() {
+  if (!collection.value || selectedNewTags.value.size === 0) return
+  isAddingTags.value = true
+  try {
+    await api.post(`/api/collections/${collection.value.id}/tags/batch`, {
+      names: [...selectedNewTags.value],
     })
-    newTagName.value = ''
     showNewTagModal.value = false
     await loadCollection()
-  } catch (e: any) {
-    if (e.message?.includes('409')) {
-      alert('Tag bestaat al')
-    }
+  } catch (err) {
+    console.error('Failed to add tags:', err)
+  } finally {
+    isAddingTags.value = false
   }
 }
 
@@ -379,10 +478,48 @@ onMounted(loadCollection)
       <div v-else-if="collection">
         <!-- Header -->
         <div class="mb-8">
-          <h1 class="text-3xl font-bold">{{ collection.name }}</h1>
-          <p v-if="collection.description" class="text-[var(--color-text-muted)] mt-1">
-            {{ collection.description }}
-          </p>
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h1 class="text-3xl font-bold">{{ collection.name }}</h1>
+              <p v-if="collection.description" class="text-[var(--color-text-muted)] mt-1">
+                {{ collection.description }}
+              </p>
+            </div>
+            <!-- Share link button -->
+            <button
+              v-if="!shareUrl"
+              @click="generateShareLink"
+              :disabled="shareLinkLoading"
+              class="btn btn-secondary flex items-center gap-2 shrink-0"
+            >
+              <Icon name="share" :size="16" />
+              {{ shareLinkLoading ? 'Genereren...' : 'Deellink maken' }}
+            </button>
+          </div>
+
+          <!-- Share link bar -->
+          <div v-if="shareUrl" class="mt-4 flex items-center gap-2 bg-[var(--color-bg-tertiary)] rounded-lg p-3">
+            <Icon name="share" :size="16" class="text-brand-400 shrink-0" />
+            <input
+              :value="shareUrl"
+              readonly
+              class="flex-1 bg-transparent text-sm text-[var(--color-text-muted)] outline-none truncate"
+              @click="($event.target as HTMLInputElement).select()"
+            />
+            <button
+              @click="copyShareLink"
+              class="btn btn-primary text-sm px-3 py-1.5 shrink-0"
+            >
+              {{ shareLinkCopied ? 'Gekopieerd!' : 'Kopiëren' }}
+            </button>
+            <button
+              @click="revokeShareLink"
+              class="text-[var(--color-text-muted)] hover:text-red-400 shrink-0 p-1.5"
+              title="Deellink intrekken"
+            >
+              <Icon name="trash" :size="16" />
+            </button>
+          </div>
         </div>
 
         <!-- Tabs -->
@@ -519,8 +656,8 @@ onMounted(loadCollection)
         <!-- Tags Tab -->
         <div v-if="activeTab === 'tags'">
           <div class="flex justify-end mb-4">
-            <button @click="showNewTagModal = true" class="btn btn-primary flex items-center gap-2">
-              <Icon name="plus" :size="16" /> Tag toevoegen
+            <button @click="openTagModal" class="btn btn-primary flex items-center gap-2">
+              <Icon name="plus" :size="16" /> Tags toevoegen
             </button>
           </div>
 
@@ -577,21 +714,74 @@ onMounted(loadCollection)
       </div>
     </div>
 
-    <!-- New Tag Modal -->
+    <!-- Tag Selector Modal -->
     <Teleport to="body">
       <div v-if="showNewTagModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" @click.self="showNewTagModal = false">
-        <div class="card p-6 w-full max-w-sm space-y-4">
-          <h2 class="text-xl font-semibold">Nieuwe tag</h2>
+        <div class="card p-6 w-full max-w-md space-y-4">
+          <h2 class="text-xl font-semibold">Tags toevoegen</h2>
+
+          <!-- Search -->
           <input
-            v-model="newTagName"
+            v-model="tagSearch"
             type="text"
-            placeholder="Tag naam"
+            placeholder="Zoek of maak een tag..."
             class="input w-full"
-            @keyup.enter="createTag"
+            @keyup.enter="canCreateCustomTag && addCustomTag()"
           />
-          <div class="flex gap-3 justify-end">
-            <button @click="showNewTagModal = false" class="btn btn-secondary">Annuleren</button>
-            <button @click="createTag" class="btn btn-primary" :disabled="!newTagName.trim()">Toevoegen</button>
+
+          <!-- Tag list -->
+          <div class="max-h-64 overflow-y-auto space-y-1 -mx-2 px-2">
+            <!-- Custom tag create option -->
+            <button
+              v-if="canCreateCustomTag"
+              @click="addCustomTag"
+              class="w-full flex items-center gap-3 px-3 py-2 rounded-lg border border-dashed border-brand-500/50 hover:border-brand-500 hover:bg-brand-500/10 text-left transition-colors"
+            >
+              <span class="inline-flex items-center gap-1.5 text-brand-400 font-medium shrink-0">
+                <Icon name="plus" :size="16" /> Maak nieuwe tag:
+              </span>
+              <strong class="text-white">{{ tagSearch.trim().toLowerCase() }}</strong>
+            </button>
+
+            <!-- Existing tag suggestions -->
+            <button
+              v-for="name in filteredTagSuggestions"
+              :key="name"
+              @click="toggleTag(name)"
+              class="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--color-bg-tertiary)] text-left"
+            >
+              <div
+                class="w-5 h-5 rounded border shrink-0 flex items-center justify-center transition-colors"
+                :class="selectedNewTags.has(name)
+                  ? 'bg-brand-500 border-brand-500'
+                  : 'border-[var(--color-border)]'"
+              >
+                <Icon v-if="selectedNewTags.has(name)" name="check" :size="14" class="text-white" />
+              </div>
+              <span>{{ name }}</span>
+            </button>
+
+            <!-- Empty state -->
+            <p v-if="!canCreateCustomTag && filteredTagSuggestions.length === 0" class="text-center text-[var(--color-text-muted)] py-4 text-sm">
+              {{ tagSearch ? 'Geen tags gevonden' : 'Alle tags zijn al toegevoegd' }}
+            </p>
+          </div>
+
+          <!-- Selected count + actions -->
+          <div class="flex items-center justify-between pt-2 border-t border-[var(--color-border)]">
+            <span class="text-sm text-[var(--color-text-muted)]">
+              {{ selectedNewTags.size }} geselecteerd
+            </span>
+            <div class="flex gap-3">
+              <button @click="showNewTagModal = false" class="btn btn-secondary">Annuleren</button>
+              <button
+                @click="addSelectedTags"
+                :class="selectedNewTags.size === 0 || isAddingTags ? 'btn bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] cursor-not-allowed' : 'btn btn-primary'"
+                :disabled="selectedNewTags.size === 0 || isAddingTags"
+              >
+                {{ isAddingTags ? 'Toevoegen...' : 'Toevoegen' }}
+              </button>
+            </div>
           </div>
         </div>
       </div>

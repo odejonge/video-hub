@@ -68,6 +68,16 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/shared/:shareToken',
+      name: 'shared-collection',
+      component: () => import('@/pages/SharedCollectionPage.vue'),
+    },
+    {
+      path: '/shared/:shareToken/clips/:clipId',
+      name: 'shared-clip-viewer',
+      component: () => import('@/pages/SharedClipViewerPage.vue'),
+    },
+    {
       path: '/terms',
       name: 'terms',
       component: () => import('@/pages/TermsPage.vue'),

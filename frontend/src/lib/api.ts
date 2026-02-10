@@ -90,3 +90,17 @@ class ApiClient {
 }
 
 export const api = new ApiClient()
+
+// Public fetch - no auth header, for shared/public endpoints
+export async function publicFetch<T = unknown>(path: string): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`${res.status}: ${text}`)
+  }
+
+  return res.json()
+}
