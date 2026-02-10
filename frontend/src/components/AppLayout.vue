@@ -17,9 +17,9 @@ function logout() {
 <template>
   <div class="min-h-screen flex flex-col">
     <!-- Nav -->
-    <nav class="px-4 md:px-6 py-4 flex items-center justify-between border-b border-[var(--color-border)]">
-      <div class="flex items-center gap-6">
-        <RouterLink to="/dashboard" class="flex items-center gap-2">
+    <nav class="px-4 md:px-6 py-4 flex items-center justify-between gap-2 border-b border-[var(--color-border)]">
+      <div class="flex items-center gap-3 md:gap-6 min-w-0">
+        <RouterLink to="/dashboard" class="flex items-center gap-2 shrink-0">
           <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center">
             <span class="text-white font-bold text-sm">D</span>
           </div>
@@ -30,42 +30,42 @@ function logout() {
         <div class="flex items-center gap-1">
           <RouterLink 
             to="/feed" 
-            class="px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+            class="inline-flex items-center gap-1 px-2 md:px-3 py-2 rounded-lg text-sm font-medium transition-colors shrink-0"
             :class="$route.path === '/feed'
               ? 'bg-brand-600/20 text-brand-400'
               : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-bg-tertiary)]'"
           >
-            <Icon name="shuffle" :size="16" /> Feed
+            <Icon name="shuffle" :size="16" /> <span class="hidden sm:inline">Feed</span>
           </RouterLink>
           <RouterLink 
             to="/dashboard" 
-            class="px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+            class="inline-flex items-center gap-1 px-2 md:px-3 py-2 rounded-lg text-sm font-medium transition-colors shrink-0"
             :class="$route.path.startsWith('/dashboard') || $route.path.startsWith('/collections') || $route.path.startsWith('/clips')
               ? 'bg-brand-600/20 text-brand-400'
               : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-bg-tertiary)]'"
           >
-            <Icon name="folder" :size="16" /> Collecties
+            <Icon name="folder" :size="16" /> <span class="hidden sm:inline">Collecties</span>
           </RouterLink>
           <RouterLink 
             to="/videos" 
-            class="px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+            class="inline-flex items-center gap-1 px-2 md:px-3 py-2 rounded-lg text-sm font-medium transition-colors shrink-0"
             :class="$route.path === '/videos' || ($route.path.startsWith('/videos/') && !$route.path.includes('/collections'))
               ? 'bg-brand-600/20 text-brand-400'
               : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-bg-tertiary)]'"
           >
-            <Icon name="video" :size="16" /> Video's
+            <Icon name="video" :size="16" /> <span class="hidden sm:inline">Video's</span>
           </RouterLink>
         </div>
       </div>
 
-      <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2 md:gap-4 shrink-0">
         <RouterLink to="/credits" class="flex items-center gap-2 text-[var(--color-text-muted)] hover:text-white transition-colors">
           <span class="text-brand-400 font-medium">{{ auth.user?.credits ?? 0 }}</span>
           <span class="hidden sm:inline">credits</span>
         </RouterLink>
 
         <div class="flex items-center gap-3">
-          <div v-if="auth.user?.avatar" class="w-8 h-8 rounded-full overflow-hidden">
+          <div v-if="auth.user?.avatar" class="w-8 h-8 rounded-full overflow-hidden shrink-0">
             <img :src="auth.user.avatar" alt="" class="w-full h-full object-cover" />
           </div>
           <span class="text-sm hidden md:inline">{{ auth.user?.name }}</span>

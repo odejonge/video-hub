@@ -50,7 +50,7 @@ const controlsVisible = ref(true)
 const isPortrait = ref(false)
 const isFullscreen = ref(false)
 const isIOSMobile = ref(false)
-const isMuted = ref(true)
+const isMuted = ref(sessionStorage.getItem('clipViewerMuted') !== 'false')
 let hlsInstance: Hls | null = null
 let hideControlsTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -183,6 +183,7 @@ function toggleMute() {
   if (!videoRef.value) return
   isMuted.value = !isMuted.value
   videoRef.value.muted = isMuted.value
+  sessionStorage.setItem('clipViewerMuted', String(isMuted.value))
 }
 
 function toggleControls() {

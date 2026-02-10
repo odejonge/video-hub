@@ -30,7 +30,7 @@ const videoRefs = ref<(HTMLVideoElement | null)[]>([])
 const isBuffering = ref<Record<number, boolean>>({})
 const videoReady = ref<Record<number, boolean>>({})
 const isActuallyPlaying = ref<Record<number, boolean>>({})
-const isMuted = ref(true) // Start muted for autoplay
+const isMuted = ref(sessionStorage.getItem('clipViewerMuted') !== 'false')
 
 // Touch/swipe state
 const touchStartY = ref(0)
@@ -310,6 +310,7 @@ function togglePlayPause() {
 
 function toggleMute() {
   isMuted.value = !isMuted.value
+  sessionStorage.setItem('clipViewerMuted', String(isMuted.value))
   // Update all video elements
   videoRefs.value.forEach((video) => {
     if (video) {
@@ -474,7 +475,7 @@ onUnmounted(() => {
         <video
           :ref="(el) => setVideoRef(el, index)"
           :src="shouldLoadVideo(index) ? clip.video.videoUrl : undefined"
-          class="max-h-full max-w-full object-contain"
+          class="w-full h-full object-contain"
           playsinline
           :muted="isMuted"
           :preload="index === currentIndex || index === currentIndex + 1 ? 'auto' : 'none'"

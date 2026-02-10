@@ -251,11 +251,11 @@ onMounted(loadVideos)
 
       <!-- Videos Grid -->
       <div v-else-if="filteredVideos.length" class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div
+        <RouterLink
           v-for="video in filteredVideos"
           :key="video.id"
+          :to="`/videos/${video.id}`"
           class="card overflow-hidden group cursor-pointer hover:ring-2 hover:ring-brand-500/50 transition-all"
-          @click="router.push(`/videos/${video.id}`)"
         >
           <!-- Thumbnail -->
           <div class="aspect-square bg-black/50 relative">
@@ -267,6 +267,13 @@ onMounted(loadVideos)
             />
             <div v-else class="w-full h-full flex items-center justify-center">
               <Icon name="video" :size="48" class="text-[var(--color-text-muted)]" />
+            </div>
+
+            <!-- Play button overlay -->
+            <div class="absolute inset-0 flex items-center justify-center">
+              <div class="w-12 h-12 rounded-full bg-black/50 backdrop-blur flex items-center justify-center group-hover:bg-white/20 transition-colors">
+                <Icon name="play" :size="24" />
+              </div>
             </div>
             
             <!-- Duration badge -->
@@ -290,7 +297,7 @@ onMounted(loadVideos)
               <span>{{ formatDate(video.createdAt) }}</span>
             </div>
           </div>
-        </div>
+        </RouterLink>
       </div>
 
       <!-- Empty state -->

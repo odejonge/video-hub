@@ -165,8 +165,8 @@ onMounted(loadCollection)
                 :alt="clip.title"
                 class="w-full h-full object-cover object-center"
               />
-              <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <div class="w-12 h-12 rounded-full bg-white/20 backdrop-blur flex items-center justify-center">
+              <div class="absolute inset-0 flex items-center justify-center">
+                <div class="w-12 h-12 rounded-full bg-black/50 backdrop-blur flex items-center justify-center group-hover:bg-white/20 transition-colors">
                   <Icon name="play" :size="24" />
                 </div>
               </div>
